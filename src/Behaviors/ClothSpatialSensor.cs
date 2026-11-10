@@ -1,3 +1,5 @@
+using ClothTheWarriorCompanion.Config;
+
 namespace ClothTheWarriorCompanion.Behaviors;
 
 /// <summary>
@@ -5,6 +7,14 @@ namespace ClothTheWarriorCompanion.Behaviors;
 /// y chequeos de línea de visión para la compañera Cloth.
 /// </summary>
 internal sealed class ClothSpatialSensor {
+    #region Tuning & Configuration
+
+    private static ClothSettings Settings => ClothSettings.Current;
+
+    public static float MaxVerticalReach => Settings.MaxVerticalReach;
+
+    #endregion
+
     public const int TerrainMask = 1 << 8;
     private static readonly float[] SpotResolutionOffsets = { 0f, 1.5f, -1.5f, 3f, -3f, 5f, -5f };
 
@@ -96,7 +106,7 @@ internal sealed class ClothSpatialSensor {
         return hit.collider != null ? hit.distance : 12f;
     }
 
-    public float GetMaxReach() => Mathf.Min(7f, GetCeilingClearance() - 0.5f);
+    public float GetMaxReach() => Mathf.Min(MaxVerticalReach, GetCeilingClearance() - 0.5f);
 
     public static bool HasLineOfSight(Vector2 origin, Vector2 target) {
         Vector2 delta = target - origin;
@@ -107,4 +117,3 @@ internal sealed class ClothSpatialSensor {
         return Physics2D.Linecast(origin, adjustedTarget, TerrainMask).collider == null;
     }
 }
-

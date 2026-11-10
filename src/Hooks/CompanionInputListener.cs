@@ -1,4 +1,5 @@
 using ClothTheWarriorCompanion.Behaviors;
+using ClothTheWarriorCompanion.Config;
 
 namespace ClothTheWarriorCompanion.Hooks;
 
@@ -10,7 +11,7 @@ internal static class CompanionInputListener {
 		var modInstance = ClothTheWarriorCompanionMod.Instance;
 		if (modInstance == null) return;
 
-		var settings = modInstance.GlobalSettings;
+		var settings = ClothSettings.Current;
 
 		if (Input.GetKeyDown(settings.SummonKey)) {
 			modInstance.LogFine("Summon key triggered");
@@ -24,4 +25,3 @@ internal static class CompanionInputListener {
 		}
 	}
 }
-

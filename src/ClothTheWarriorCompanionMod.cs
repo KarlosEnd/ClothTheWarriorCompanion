@@ -10,7 +10,7 @@ namespace ClothTheWarriorCompanion;
 /// <summary>
 /// Clase principal del mod "Cloth The Warrior Companion" para Hollow Knight.
 /// </summary>
-public sealed class ClothTheWarriorCompanionMod : Mod, ITogglableMod, IGlobalSettings<GlobalSettings> {
+public sealed class ClothTheWarriorCompanionMod : Mod, ITogglableMod {
 	private const string ClothSceneName = "Fungus3_23_boss";
 	private const string ClothScenePath = "Battle Scene/Cloth Entry/Cloth Fighter";
 
@@ -26,6 +26,9 @@ public sealed class ClothTheWarriorCompanionMod : Mod, ITogglableMod, IGlobalSet
 	public override void Initialize(Dictionary<string, Dictionary<string, GameObject>> preloads) {
 		if (Instance != null) return;
 		Instance = this;
+
+		ClothSettings.Load();
+		ClothQuickMenu.Initialize();
 
 		if (preloads != null && preloads.TryGetValue(ClothSceneName, out var sceneObjects)) {
 			if (sceneObjects.TryGetValue(ClothScenePath, out var prefab)) {
@@ -59,8 +62,4 @@ public sealed class ClothTheWarriorCompanionMod : Mod, ITogglableMod, IGlobalSet
 	public override List<(string, string)> GetPreloadNames() => new() {
 		(ClothSceneName, ClothScenePath)
 	};
-
-	public GlobalSettings GlobalSettings { get; private set; } = new();
-	public void OnLoadGlobal(GlobalSettings settings) => GlobalSettings = settings ?? new GlobalSettings();
-	public GlobalSettings OnSaveGlobal() => GlobalSettings;
 }

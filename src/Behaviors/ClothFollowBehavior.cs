@@ -1,3 +1,4 @@
+using ClothTheWarriorCompanion.Config;
 using HeroCtrl = HeroController;
 
 namespace ClothTheWarriorCompanion.Behaviors;
@@ -8,6 +9,28 @@ namespace ClothTheWarriorCompanion.Behaviors;
 /// los subsistemas de detección espacial, movimiento físico y combate.
 /// </summary>
 public class ClothFollowBehavior : MonoBehaviour {
+    #region Tuning & Configuration
+
+    private static ClothSettings Settings => ClothSettings.Current;
+
+    // Accesos directos a parámetros de seguimiento y rescate
+    public static float FollowDistanceX => Settings.FollowDistanceX;
+    public static float FollowDistanceY => Settings.FollowDistanceY;
+    public static float BurrowThresholdX => Settings.BurrowThresholdX;
+    public static float BurrowThresholdEnemyX => Settings.BurrowThresholdEnemyX;
+    public static float MaxFallDropDeltaY => Settings.MaxFallDropDeltaY;
+    public static float FollowCooldownAfterJump => Settings.FollowCooldownAfterJump;
+    public static float FollowCooldownAfterBurrow => Settings.FollowCooldownAfterBurrow;
+    public static float JumpNormalMaxSpeedX => Settings.JumpNormalMaxSpeedX;
+    public static float EnemyScanInterval => Settings.EnemyScanInterval;
+    public static float RescueDistanceTotal => Settings.RescueDistanceTotal;
+    public static float RescueDistanceY => Settings.RescueDistanceY;
+    public static float RescueAbyssY => Settings.RescueAbyssY;
+    public static float BusyRescueTimeout => Settings.BusyRescueTimeout;
+    public static float AttackCooldown => Settings.AttackCooldown;
+
+    #endregion
+
     private tk2dSpriteAnimator _animator = null!;
     private MeshRenderer? _meshRenderer;
     private tk2dSprite? _sprite;
@@ -97,7 +120,7 @@ public class ClothFollowBehavior : MonoBehaviour {
 
         if (_isBusy) {
             _busyTimer += Time.deltaTime;
-            if (_busyTimer > 8f)
+            if (_busyTimer > BusyRescueTimeout)
                 Rescue();
             return;
         }
@@ -107,7 +130,7 @@ public class ClothFollowBehavior : MonoBehaviour {
         Vector2 currentFeet = _sensor.Feet();
 
         // Rescate por desincronización de distancia o piso vertical
-        if (Vector2.Distance(currentFeet, heroGround) > 45f || Mathf.Abs(heroGround.y - currentFeet.y) > 30f) {
+        if (Vector2.Distance(currentFeet, heroGround) > RescueDistanceTotal || Mathf.Abs(heroGround.y - currentFeet.y) > RescueDistanceY) {
             Rescue();
             return;
         }
@@ -116,7 +139,7 @@ public class ClothFollowBehavior : MonoBehaviour {
         _safetyTimer -= Time.deltaTime;
         if (_safetyTimer <= 0f) {
             _safetyTimer = 0.25f;
-            if (_sensor.IsEmbedded() || transform.position.y < heroGround.y - 40f) {
+            if (_sensor.IsEmbedded() || transform.position.y < heroGround.y - RescueAbyssY) {
                 Rescue();
                 return;
             }
@@ -129,7 +152,7 @@ public class ClothFollowBehavior : MonoBehaviour {
 
         _scanTimer -= Time.deltaTime;
         if (_scanTimer <= 0f) {
-            _scanTimer = 0.4f;
+            _scanTimer = EnemyScanInterval;
             _currentEnemy = _combat.FindBestEnemy(_sensor.BodyCenter(), _sensor.HeroCenter(), gameObject);
         }
 
@@ -146,15 +169,15 @@ public class ClothFollowBehavior : MonoBehaviour {
                 if (_attackCooldown <= 0f) {
                     StartCoroutine(AttackCoroutine(_currentEnemy));
                 }
-            } else if (hasLos && deltaX <= 6f && deltaY > maxReach) {
+            } else if (hasLos && deltaX <= ClothCombatHandler.AttackAnimDistance && deltaY > maxReach) {
                 // El enemigo está demasiado alto; pausar sin realizar burrow indiscriminado
             } else if (_followCooldown <= 0f) {
                 Vector2 enemyGround = ClothCompanionManager.TryFindGround(enemyCenter, out Vector2 groundPoint, 40f) ? groundPoint : heroGround;
                 MoveToTarget(enemyGround, isEnemyTarget: true);
             }
         } else {
-            bool isFarX = Mathf.Abs(heroGround.x - currentFeet.x) > 7f;
-            bool isFarY = Mathf.Abs(heroGround.y - currentFeet.y) > 3f;
+            bool isFarX = Mathf.Abs(heroGround.x - currentFeet.x) > FollowDistanceX;
+            bool isFarY = Mathf.Abs(heroGround.y - currentFeet.y) > FollowDistanceY;
             if ((isFarX || isFarY) && _followCooldown <= 0f) {
                 MoveToTarget(heroGround, isEnemyTarget: false);
             }
@@ -165,11 +188,11 @@ public class ClothFollowBehavior : MonoBehaviour {
         Vector2 myFeet = _sensor.Feet();
         float deltaX = targetFeet.x - myFeet.x;
         float deltaY = targetFeet.y - myFeet.y;
-        float maxXThreshold = isEnemyTarget ? 30f : 28f;
+        float maxXThreshold = isEnemyTarget ? BurrowThresholdEnemyX : BurrowThresholdX;
 
         bool isPathBlocked = !ClothSpatialSensor.HasLineOfSight(_sensor.BodyCenter(), targetFeet + (Vector2.up * _motor.FeetOffset));
 
-        if (isPathBlocked || Mathf.Abs(deltaX) > maxXThreshold || deltaY > _sensor.GetMaxReach() || deltaY < -14f) {
+        if (isPathBlocked || Mathf.Abs(deltaX) > maxXThreshold || deltaY > _sensor.GetMaxReach() || deltaY < MaxFallDropDeltaY) {
             StartCoroutine(BurrowCoroutine(targetFeet));
         } else {
             StartCoroutine(JumpCoroutine(deltaX, deltaY));
@@ -211,7 +234,7 @@ public class ClothFollowBehavior : MonoBehaviour {
         _animator.Play("Idle");
         _motor.CompleteAppear();
 
-        _followCooldown = 0.5f;
+        _followCooldown = FollowCooldownAfterJump;
         _isBusy = false;
     }
 
@@ -232,7 +255,7 @@ public class ClothFollowBehavior : MonoBehaviour {
         }
 
         yield return AppearCoroutine(targetFeetPosition);
-        _followCooldown = 1.0f;
+        _followCooldown = FollowCooldownAfterBurrow;
     }
 
     private IEnumerator JumpCoroutine(float distX, float distY) {
@@ -243,7 +266,7 @@ public class ClothFollowBehavior : MonoBehaviour {
         yield return new WaitForSeconds(0.1f);
 
         _motor.BeginAirborne();
-        _motor.Launch(distX, distY, 20f, 1f, _sensor.GetCeilingClearance(), out _, out float totalFlightTime, out _);
+        _motor.Launch(distX, distY, JumpNormalMaxSpeedX, 1f, _sensor.GetCeilingClearance(), out _, out float totalFlightTime, out _);
         _animator.Play("Jump");
 
         float elapsed = 0f;
@@ -257,7 +280,7 @@ public class ClothFollowBehavior : MonoBehaviour {
         _motor.EndAirborne();
         _animator.Play("Idle");
 
-        _followCooldown = 0.5f;
+        _followCooldown = FollowCooldownAfterJump;
         _isBusy = false;
     }
 
@@ -347,7 +370,7 @@ public class ClothFollowBehavior : MonoBehaviour {
 
         _animator.Play("Idle");
 
-        _attackCooldown = 1.0f;
+        _attackCooldown = AttackCooldown;
         _isBusy = false;
     }
 

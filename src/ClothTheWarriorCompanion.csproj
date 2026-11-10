@@ -48,6 +48,10 @@
 			<HintPath>$(HKRefs)/UnityEngine.Physics2DModule.dll</HintPath>
 			<Private>false</Private>
 		</Reference>
+		<Reference Include="UnityEngine.IMGUIModule">
+			<HintPath>$(HKRefs)/UnityEngine.IMGUIModule.dll</HintPath>
+			<Private>false</Private>
+		</Reference>
 		<Reference Include="Newtonsoft.Json">
 			<HintPath>$(HKRefs)/Newtonsoft.Json.dll</HintPath>
 			<Private>false</Private>

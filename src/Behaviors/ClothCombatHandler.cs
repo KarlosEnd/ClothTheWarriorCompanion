@@ -1,17 +1,26 @@
+using ClothTheWarriorCompanion.Config;
+
 namespace ClothTheWarriorCompanion.Behaviors;
 
 /// <summary>
 /// Gestiona la detección, validación y combate con enemigos, así como el daño en área por impacto (slam) de Cloth.
 /// </summary>
 internal sealed class ClothCombatHandler {
-    public const int DefaultSlamDamageAmount = 40;
-    public const float DefaultSlamRadius = 5f;
+    #region Tuning & Configuration
 
-    public const float AttackRange = 18f;
-    public const float AttackMaxSpeedX = 24f;
-    public const float DiveGravityMultiplier = 2.5f;
-    public const float AttackAnimDistance = 6f;
-    public const float AirHitDistance = 2.5f;
+    private static ClothSettings Settings => ClothSettings.Current;
+
+    public static int DefaultSlamDamageAmount => Settings.SlamDamageAmount;
+    public static float DefaultSlamRadius => Settings.SlamRadius;
+    public static float AttackRange => Settings.AttackRange;
+    public static float AttackMaxSpeedX => Settings.AttackMaxSpeedX;
+    public static float DiveGravityMultiplier => Settings.DiveGravityMultiplier;
+    public static float AttackAnimDistance => Settings.AttackAnimDistance;
+    public static float AirHitDistance => Settings.AirHitDistance;
+    public static float DetectionRadiusCloth => Settings.DetectionRadiusCloth;
+    public static float ProtectionRadiusHero => Settings.ProtectionRadiusHero;
+
+    #endregion
 
     private static readonly Collider2D[] OverlapCircleBuffer = new Collider2D[32];
     private static readonly HashSet<HealthManager> DamagedTargetsBuffer = new();
@@ -24,7 +33,7 @@ internal sealed class ClothCombatHandler {
 
     public GameObject? FindBestEnemy(Vector2 clothCenter, Vector2 heroCenter, GameObject selfObject) {
         GameObject? closestEnemy = null;
-        float bestDistance = 22f;
+        float bestDistance = DetectionRadiusCloth;
 
         foreach (var healthManager in UObject.FindObjectsOfType<HealthManager>()) {
             GameObject enemyObject = healthManager.gameObject;
@@ -33,7 +42,7 @@ internal sealed class ClothCombatHandler {
             Vector2 center = ClothSpatialSensor.EnemyCenter(enemyObject);
             float distance = Vector2.Distance(clothCenter, center);
             if (distance >= bestDistance) continue;
-            if (Vector2.Distance(heroCenter, center) > 25f) continue;
+            if (Vector2.Distance(heroCenter, center) > ProtectionRadiusHero) continue;
             if (!ClothSpatialSensor.HasLineOfSight(clothCenter, center) && !ClothSpatialSensor.HasLineOfSight(heroCenter, center)) continue;
 
             closestEnemy = enemyObject;
@@ -79,4 +88,3 @@ internal sealed class ClothCombatHandler {
         DamagedTargetsBuffer.Clear();
     }
 }
-

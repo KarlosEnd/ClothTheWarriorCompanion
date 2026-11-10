@@ -1,10 +1,24 @@
+using ClothTheWarriorCompanion.Config;
+
 namespace ClothTheWarriorCompanion.Behaviors;
 
 /// <summary>
 /// Gestiona la física cinemática, colisionadores dinámicos, impulsos de salto y orientación visual de Cloth.
 /// </summary>
 internal sealed class ClothMotor {
-    public const float RestGravity = 3f;
+    #region Tuning & Configuration
+
+    private static ClothSettings Settings => ClothSettings.Current;
+
+    public static float RestGravity => Settings.RestGravity;
+    public static float MinJumpHeight => Settings.MinJumpHeight;
+    public static float MaxJumpHeight => Settings.MaxJumpHeight;
+    public static float JumpHeightBuffer => Settings.JumpHeightBuffer;
+    public static float MinApexTime => Settings.MinApexTime;
+    public static float MaxApexTime => Settings.MaxApexTime;
+    public static float CeilingSafetyMargin => Settings.CeilingSafetyMargin;
+
+    #endregion
 
     private readonly Transform _transform;
     private readonly Rigidbody2D _rigidbody;
@@ -99,10 +113,10 @@ internal sealed class ClothMotor {
         out float totalFlightTime,
         out float launchGravityScale) {
 
-        float jumpHeight = Mathf.Clamp(Mathf.Max(distY, 0f) + 2f, 3f, 9f);
-        jumpHeight = Mathf.Min(jumpHeight, Mathf.Max(1.5f, ceilingClearance - 0.3f));
+        float jumpHeight = Mathf.Clamp(Mathf.Max(distY, 0f) + JumpHeightBuffer, MinJumpHeight, MaxJumpHeight);
+        jumpHeight = Mathf.Min(jumpHeight, Mathf.Max(1.5f, ceilingClearance - CeilingSafetyMargin));
 
-        apexTime = Mathf.Clamp(0.30f + (jumpHeight * 0.055f), 0.4f, 0.75f);
+        apexTime = Mathf.Clamp(0.30f + (jumpHeight * 0.055f), MinApexTime, MaxApexTime);
         float gravity = 2f * jumpHeight / (apexTime * apexTime);
         float velocityY = gravity * apexTime;
 
@@ -118,4 +132,3 @@ internal sealed class ClothMotor {
         _rigidbody.velocity = new Vector2(velocityX, velocityY);
     }
 }
-
