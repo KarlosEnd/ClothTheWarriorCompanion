@@ -250,7 +250,7 @@ public sealed class ClothQuickMenu : MonoBehaviour {
         DrawFloatRow("Retorno tras caer:", settings.DefeatedReturnDelay, v => settings.DefeatedReturnDelay = v, 0.5f, 0f, 60f, "0.0s");
 
         GUILayout.Space(8);
-        GUILayout.Label("Target de enemigos (afecta a los que localizan al Caballero con 'GetHero').");
+        GUILayout.Label("Target de enemigos (solo afecta a los que guardan al Caballero en una variable de su FSM).");
         DrawBoolRow("Los enemigos le hacen target", settings.EnemiesTargetCloth, v => settings.EnemiesTargetCloth = v);
         DrawFloatRow("Rango de target:", settings.EnemyTargetRange, v => settings.EnemyTargetRange = v, 2f, 0f, 200f);
     }
