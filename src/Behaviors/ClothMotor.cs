@@ -1,0 +1,121 @@
+namespace ClothTheWarriorCompanion.Behaviors;
+
+/// <summary>
+/// Gestiona la física cinemática, colisionadores dinámicos, impulsos de salto y orientación visual de Cloth.
+/// </summary>
+internal sealed class ClothMotor {
+    public const float RestGravity = 3f;
+
+    private readonly Transform _transform;
+    private readonly Rigidbody2D _rigidbody;
+    private readonly BoxCollider2D _normalCollider;
+    private readonly CircleCollider2D _jumpCollider;
+
+    public float FeetOffset { get; } = 1.2484f;
+    public Rigidbody2D Rigidbody => _rigidbody;
+    public BoxCollider2D NormalCollider => _normalCollider;
+    public CircleCollider2D JumpCollider => _jumpCollider;
+    public Vector2 Velocity => _rigidbody.velocity;
+    public float VelocityY => _rigidbody.velocity.y;
+
+    public ClothMotor(Transform transform, Rigidbody2D rigidbody, BoxCollider2D normalCollider) {
+        _transform = transform;
+        _rigidbody = rigidbody;
+        _normalCollider = normalCollider;
+
+        _jumpCollider = transform.gameObject.AddComponent<CircleCollider2D>();
+        _jumpCollider.radius = _normalCollider.size.x * 0.5f;
+        float normalBottomY = _normalCollider.offset.y - (_normalCollider.size.y * 0.5f);
+        _jumpCollider.offset = new Vector2(_normalCollider.offset.x, normalBottomY + _jumpCollider.radius);
+        _jumpCollider.enabled = false;
+
+        // Distancia del centro del transform a los pies calculada desde el collider
+        float calculatedOffset = ((_normalCollider.size.y * 0.5f) - _normalCollider.offset.y) * Mathf.Abs(transform.lossyScale.y);
+        if (calculatedOffset > 0.1f) {
+            FeetOffset = calculatedOffset;
+        }
+
+        _rigidbody.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+        _rigidbody.sleepMode = RigidbodySleepMode2D.NeverSleep;
+        _rigidbody.freezeRotation = true;
+        _rigidbody.drag = 0f;
+    }
+
+    public void ResetPhysics() {
+        if (_jumpCollider != null) _jumpCollider.enabled = false;
+        if (_normalCollider != null) {
+            _normalCollider.enabled = true;
+            _normalCollider.isTrigger = false;
+        }
+        if (_rigidbody != null) {
+            _rigidbody.velocity = Vector2.zero;
+            _rigidbody.gravityScale = RestGravity;
+        }
+    }
+
+    public void PrepareForBurrowOrAppear() {
+        _rigidbody.velocity = Vector2.zero;
+        _rigidbody.gravityScale = 0f;
+        _jumpCollider.enabled = false;
+        _normalCollider.enabled = true;
+        _normalCollider.isTrigger = true;
+    }
+
+    public void CompleteAppear() {
+        _normalCollider.isTrigger = false;
+        _rigidbody.gravityScale = RestGravity;
+    }
+
+    public void BeginAirborne() {
+        _normalCollider.enabled = false;
+        _jumpCollider.enabled = true;
+    }
+
+    public void EndAirborne() {
+        _rigidbody.velocity = Vector2.zero;
+        _rigidbody.gravityScale = RestGravity;
+        _jumpCollider.enabled = false;
+        _normalCollider.enabled = true;
+    }
+
+    public void SetGravityScale(float scale) {
+        _rigidbody.gravityScale = scale;
+    }
+
+    public void TurnToFace(float horizontalDirection) {
+        if (Mathf.Abs(horizontalDirection) < 0.01f) return;
+        Vector3 scale = _transform.localScale;
+        scale.x = Mathf.Abs(scale.x) * Mathf.Sign(horizontalDirection);
+        _transform.localScale = scale;
+    }
+
+    public void Launch(
+        float distX,
+        float distY,
+        float maxVelocityX,
+        float diveMultiplier,
+        float ceilingClearance,
+        out float apexTime,
+        out float totalFlightTime,
+        out float launchGravityScale) {
+
+        float jumpHeight = Mathf.Clamp(Mathf.Max(distY, 0f) + 2f, 3f, 9f);
+        jumpHeight = Mathf.Min(jumpHeight, Mathf.Max(1.5f, ceilingClearance - 0.3f));
+
+        apexTime = Mathf.Clamp(0.30f + (jumpHeight * 0.055f), 0.4f, 0.75f);
+        float gravity = 2f * jumpHeight / (apexTime * apexTime);
+        float velocityY = gravity * apexTime;
+
+        float fallHeight = Mathf.Max(jumpHeight - distY, 0.01f);
+        float fallTime = Mathf.Sqrt(2f * fallHeight / (gravity * Mathf.Max(1f, diveMultiplier)));
+        totalFlightTime = apexTime + fallTime;
+
+        float velocityX = Mathf.Clamp(distX / totalFlightTime, -maxVelocityX, maxVelocityX);
+
+        float baseGravity = Mathf.Max(1f, Mathf.Abs(Physics2D.gravity.y));
+        launchGravityScale = gravity / baseGravity;
+        _rigidbody.gravityScale = launchGravityScale;
+        _rigidbody.velocity = new Vector2(velocityX, velocityY);
+    }
+}
+
