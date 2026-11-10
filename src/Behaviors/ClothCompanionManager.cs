@@ -1,3 +1,5 @@
+using ClothTheWarriorCompanion.Config;
+
 using HeroCtrl = HeroController;
 
 namespace ClothTheWarriorCompanion.Behaviors;
@@ -16,6 +18,14 @@ internal static class ClothCompanionManager {
 
     private static ClothFollowBehavior? Behavior =>
         CompanionInstance != null ? CompanionInstance.GetComponent<ClothFollowBehavior>() : null;
+
+    /// <summary>
+    /// Cloth si está presente y puede ser objetivo de los enemigos (no está excavando ni derrotada); si no, null.
+    /// </summary>
+    internal static GameObject? TargetableCompanion =>
+        CompanionInstance != null && CompanionInstance.activeInHierarchy && Behavior != null && Behavior.IsTargetable
+            ? CompanionInstance
+            : null;
 
     #region Position Utilities
 
@@ -39,7 +49,8 @@ internal static class ClothCompanionManager {
     /// </summary>
     private static Vector2 GetKnightFeetPosition() {
         var hero = HeroCtrl.instance;
-        if (hero == null) return Vector2.zero;
+        if (hero == null)
+            return Vector2.zero;
 
         var boxCollider = hero.GetComponent<BoxCollider2D>();
         if (boxCollider != null) {
@@ -59,7 +70,6 @@ internal static class ClothCompanionManager {
         if (HeroCtrl.instance != null && HeroCtrl.instance.cState.onGround) {
             return feetPosition;
         }
-
         return TryFindGround(feetPosition, out Vector2 groundPoint) ? groundPoint : feetPosition;
     }
 
@@ -85,7 +95,8 @@ internal static class ClothCompanionManager {
     /// Reubica inmediatamente a Cloth en la posición del Caballero.
     /// </summary>
     internal static void RecallToKnight() {
-        if (CompanionInstance is null or { activeSelf: false }) return;
+        if (CompanionInstance is null or { activeSelf: false })
+            return;
         Behavior?.AppearAt(GetKnightGroundPosition());
     }
 
@@ -104,7 +115,8 @@ internal static class ClothCompanionManager {
         }
 
         var hero = HeroCtrl.instance;
-        if (hero == null) return;
+        if (hero == null)
+            return;
 
         GameObject companion = UObject.Instantiate(
             ClothTheWarriorCompanionMod.ClothFighterPrefab,
@@ -131,12 +143,17 @@ internal static class ClothCompanionManager {
         }
 
         companion.AddComponent<ClothFollowBehavior>();
+
+        //DEBUGGER:
+        companion.AddComponent<ClothTheWarriorCompanion.DebugTools.ClothVisualDebugger>();
+
         CompanionInstance = companion;
 
         GameManager.instance?.StartCoroutine(ActivateCompanionRoutine(companion));
     }
 
     private static void Despawn() {
+        Hooks.EnemyTargetRedirector.RestoreAll();
         if (CompanionInstance != null) {
             UObject.Destroy(CompanionInstance);
             CompanionInstance = null;
@@ -145,7 +162,8 @@ internal static class ClothCompanionManager {
 
     private static IEnumerator ActivateCompanionRoutine(GameObject companion) {
         yield return null;
-        if (companion == null) yield break;
+        if (companion == null)
+            yield break;
 
         companion.SetActive(true);
         companion.GetComponent<ClothFollowBehavior>()?.AppearAt(GetKnightGroundPosition());
@@ -154,23 +172,28 @@ internal static class ClothCompanionManager {
     internal static IEnumerator SceneTransitionSpawnRoutine() {
         int sequenceId = ++_transitionSequenceId;
         GameObject? companion = CompanionInstance;
-        if (companion == null) yield break;
+        if (companion == null)
+            yield break;
 
+        Hooks.EnemyTargetRedirector.RestoreAll();
         companion.SetActive(false);
         yield return null;
 
         var gameManager = GameManager.instance;
-        if (gameManager == null) yield break;
+        if (gameManager == null)
+            yield break;
 
         // Esperar a que la nueva escena finalice carga y esté lista
         float elapsedWait = 0f;
         while (elapsedWait < 15f && (gameManager.gameState != GlobalEnums.GameState.PLAYING || HeroCtrl.instance == null)) {
             elapsedWait += Time.unscaledDeltaTime;
             yield return null;
-            if (sequenceId != _transitionSequenceId || companion == null) yield break;
+            if (sequenceId != _transitionSequenceId || companion == null)
+                yield break;
         }
 
-        if (companion == null || sequenceId != _transitionSequenceId) yield break;
+        if (companion == null || sequenceId != _transitionSequenceId)
+            yield break;
 
         // Si regresamos al menú principal o cinemática no interactiva, retirar compañera
         if (!gameManager.IsGameplayScene() || HeroCtrl.instance == null) {
@@ -180,7 +203,8 @@ internal static class ClothCompanionManager {
 
         // Breve margen para que el héroe termine de asentarse en la superficie tras la entrada
         yield return new WaitForSeconds(0.75f);
-        if (companion == null || sequenceId != _transitionSequenceId) yield break;
+        if (companion == null || sequenceId != _transitionSequenceId)
+            yield break;
 
         companion.SetActive(true);
         companion.GetComponent<ClothFollowBehavior>()?.AppearAt(GetKnightGroundPosition());

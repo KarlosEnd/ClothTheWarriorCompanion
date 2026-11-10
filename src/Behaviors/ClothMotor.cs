@@ -96,6 +96,20 @@ internal sealed class ClothMotor {
         _rigidbody.gravityScale = scale;
     }
 
+    /// <summary>
+    /// Restablece la física normal (collider de pie, gravedad de reposo) y aplica un impulso de knockback.
+    /// </summary>
+    public void ApplyKnockback(Vector2 velocity) {
+        ResetPhysics();
+        _rigidbody.velocity = velocity;
+    }
+
+    public void SetVelocityX(float x) {
+        Vector2 v = _rigidbody.velocity;
+        v.x = x;
+        _rigidbody.velocity = v;
+    }
+
     public void TurnToFace(float horizontalDirection) {
         if (Mathf.Abs(horizontalDirection) < 0.01f) return;
         Vector3 scale = _transform.localScale;
@@ -103,6 +117,11 @@ internal sealed class ClothMotor {
         _transform.localScale = scale;
     }
 
+    /// <summary>
+    /// Lanza a Cloth en una parábola. Con jumpHeightOverride / apexTimeOverride > 0 se usan
+    /// esos valores en lugar de los calculados (usado por el salto corto de ataque).
+    /// forwardDirection != 0 impide que la velocidad horizontal apunte en sentido contrario a esa dirección.
+    /// </summary>
     public void Launch(
         float distX,
         float distY,
@@ -111,12 +130,25 @@ internal sealed class ClothMotor {
         float ceilingClearance,
         out float apexTime,
         out float totalFlightTime,
-        out float launchGravityScale) {
+        out float launchGravityScale,
+        float jumpHeightOverride = -1f,
+        float apexTimeOverride = -1f,
+        float forwardDirection = 0f) {
 
-        float jumpHeight = Mathf.Clamp(Mathf.Max(distY, 0f) + JumpHeightBuffer, MinJumpHeight, MaxJumpHeight);
-        jumpHeight = Mathf.Min(jumpHeight, Mathf.Max(1.5f, ceilingClearance - CeilingSafetyMargin));
+        float jumpHeight;
+        if (jumpHeightOverride > 0f) {
+            // Hop bajo: solo lo necesario para llegar al objetivo
+            jumpHeight = Mathf.Max(jumpHeightOverride, Mathf.Max(distY, 0f) + 0.25f);
+            jumpHeight = Mathf.Min(jumpHeight, Mathf.Max(0.5f, ceilingClearance - CeilingSafetyMargin));
+        } else {
+            jumpHeight = Mathf.Clamp(Mathf.Max(distY, 0f) + JumpHeightBuffer, MinJumpHeight, MaxJumpHeight);
+            jumpHeight = Mathf.Min(jumpHeight, Mathf.Max(1.5f, ceilingClearance - CeilingSafetyMargin));
+        }
 
-        apexTime = Mathf.Clamp(0.30f + (jumpHeight * 0.055f), MinApexTime, MaxApexTime);
+        apexTime = apexTimeOverride > 0f
+            ? apexTimeOverride
+            : Mathf.Clamp(0.30f + (jumpHeight * 0.055f), MinApexTime, MaxApexTime);
+
         float gravity = 2f * jumpHeight / (apexTime * apexTime);
         float velocityY = gravity * apexTime;
 
@@ -125,6 +157,12 @@ internal sealed class ClothMotor {
         totalFlightTime = apexTime + fallTime;
 
         float velocityX = Mathf.Clamp(distX / totalFlightTime, -maxVelocityX, maxVelocityX);
+
+        // Solo hacia adelante: nunca invierte el sentido respecto a la orientación indicada
+        if (Mathf.Abs(forwardDirection) > 0.01f) {
+            float dir = Mathf.Sign(forwardDirection);
+            velocityX = Mathf.Max(0f, velocityX * dir) * dir;
+        }
 
         float baseGravity = Mathf.Max(1f, Mathf.Abs(Physics2D.gravity.y));
         launchGravityScale = gravity / baseGravity;

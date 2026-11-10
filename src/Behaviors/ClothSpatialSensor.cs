@@ -53,9 +53,56 @@ internal sealed class ClothSpatialSensor {
     public Vector2 HeroCenter() =>
         _heroCollider != null ? (Vector2)_heroCollider.bounds.center : (Vector2)_hero.transform.position;
 
+    private static readonly List<Collider2D> ColliderBuffer = new();
+
+    /// <summary>
+    /// Collider "de cuerpo" del objetivo: prefiere uno sólido en el propio objeto, luego un trigger en el propio objeto,
+    /// y por último un sólido en los hijos. Ignora triggers hijos (rangos de detección, sensores...).
+    /// </summary>
+    public static Collider2D? GetBodyCollider(GameObject target) {
+        Collider2D? solid = null;
+        Collider2D? trigger = null;
+
+        target.GetComponents(ColliderBuffer);
+        for (int i = 0; i < ColliderBuffer.Count; i++) {
+            var c = ColliderBuffer[i];
+            if (c == null || !c.enabled) continue;
+            if (!c.isTrigger) { solid = c; break; }
+            trigger ??= c;
+        }
+
+        if (solid == null && trigger == null) {
+            target.GetComponentsInChildren(false, ColliderBuffer);
+            for (int i = 0; i < ColliderBuffer.Count; i++) {
+                var c = ColliderBuffer[i];
+                if (c == null || !c.enabled || c.isTrigger) continue;
+                solid = c;
+                break;
+            }
+        }
+
+        ColliderBuffer.Clear();
+        return solid ?? trigger;
+    }
+
     public static Vector2 EnemyCenter(GameObject target) {
-        var col = target.GetComponent<Collider2D>();
+        var col = GetBodyCollider(target);
         return col != null ? (Vector2)col.bounds.center : (Vector2)target.transform.position;
+    }
+
+    /// <summary>
+    /// Separación (por eje) entre un punto y el collider del objetivo. 0 en un eje = el punto queda dentro del rango del collider en ese eje.
+    /// </summary>
+    public static Vector2 GetGapToTarget(GameObject target, Vector2 from) {
+        var col = GetBodyCollider(target);
+        if (col == null) {
+            Vector2 p = target.transform.position;
+            return new Vector2(Mathf.Abs(p.x - from.x), Mathf.Abs(p.y - from.y));
+        }
+        UnityEngine.Bounds b = col.bounds;
+        return new Vector2(
+            Mathf.Max(0f, Mathf.Abs(from.x - b.center.x) - b.extents.x),
+            Mathf.Max(0f, Mathf.Abs(from.y - b.center.y) - b.extents.y));
     }
 
     public Vector3 FeetToPosition(Vector2 feetGroundPosition) {

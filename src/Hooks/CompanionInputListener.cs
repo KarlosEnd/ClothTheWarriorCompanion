@@ -1,5 +1,6 @@
 using ClothTheWarriorCompanion.Behaviors;
 using ClothTheWarriorCompanion.Config;
+using ClothTheWarriorCompanion.DebugTools;
 
 namespace ClothTheWarriorCompanion.Hooks;
 
@@ -9,7 +10,8 @@ namespace ClothTheWarriorCompanion.Hooks;
 internal static class CompanionInputListener {
 	internal static void OnHeroUpdate() {
 		var modInstance = ClothTheWarriorCompanionMod.Instance;
-		if (modInstance == null) return;
+		if (modInstance == null)
+			return;
 
 		var settings = ClothSettings.Current;
 
@@ -22,6 +24,9 @@ internal static class CompanionInputListener {
 		} else if (Input.GetKeyDown(settings.BurrowKey)) {
 			modInstance.LogFine("Burrow key triggered");
 			ClothCompanionManager.BurrowToKnight();
+		} else if (Input.GetKeyDown(KeyCode.F1)) { // Toggle del debugger visual
+			ClothVisualDebugger.IsActive = !ClothVisualDebugger.IsActive;
+			modInstance.LogFine($"Visual Debugger: {(ClothVisualDebugger.IsActive ? "Activado" : "Desactivado")}");
 		}
 	}
 }

@@ -1,4 +1,5 @@
 using ClothTheWarriorCompanion.Config;
+
 using HeroCtrl = HeroController;
 
 namespace ClothTheWarriorCompanion.Behaviors;
@@ -28,6 +29,9 @@ public class ClothFollowBehavior : MonoBehaviour {
     public static float RescueAbyssY => Settings.RescueAbyssY;
     public static float BusyRescueTimeout => Settings.BusyRescueTimeout;
     public static float AttackCooldown => Settings.AttackCooldown;
+    public static float maxAllowedGroundDistance => Settings.maxAllowedGroundDistance;
+    public static float JumpFallGravityMultiplier => Settings.JumpFallGravityMultiplier;
+    public static float JumpRecoverDurationScale => Settings.JumpRecoverDurationScale;
 
     #endregion
 
@@ -44,10 +48,24 @@ public class ClothFollowBehavior : MonoBehaviour {
     private float _busyTimer = 0f;
     private float _followCooldown = 0f;
     private float _attackCooldown = 0f;
+    private float _retreatCooldown = 0f;
+
+    // Daño recibido
+    private int _damageTaken = 0;
+    private float _invulnTimer = 0f;
+    private float _retargetTimer = 0f;
+    private bool _isDowned = false;
+    private bool _isBurrowing = false;
+    private readonly Collider2D[] _damageBuffer = new Collider2D[64];
     private float _scanTimer = 0f;
     private float _safetyTimer = 0f;
 
     private GameObject? _currentEnemy = null;
+
+    /// <summary>
+    /// Cloth puede ser objetivo de los enemigos salvo si está excavando/emergiendo o derrotada.
+    /// </summary>
+    public bool IsTargetable => !_isDowned && !_isBurrowing;
 
     #region Lifecycle
 
@@ -68,7 +86,7 @@ public class ClothFollowBehavior : MonoBehaviour {
 
     private void LateUpdate() {
         // Asegurar que el MeshRenderer permanezca activo
-        if (_meshRenderer != null && !_meshRenderer.enabled) {
+        if (_meshRenderer != null && !_meshRenderer.enabled && !_isDowned) {
             _meshRenderer.enabled = true;
             ClothTheWarriorCompanionMod.Instance?.LogDebug("Cloth MeshRenderer re-enabled in LateUpdate.");
         }
@@ -80,6 +98,9 @@ public class ClothFollowBehavior : MonoBehaviour {
         _busyTimer = 0f;
         _followCooldown = 0f;
         _attackCooldown = 0.5f;
+        _retreatCooldown = 0f;
+        _isBurrowing = false;
+        _isDowned = false;
 
         _motor.ResetPhysics();
     }
@@ -93,6 +114,7 @@ public class ClothFollowBehavior : MonoBehaviour {
     /// </summary>
     public void AppearAt(Vector2 feetGroundPosition) {
         ResetState();
+        _damageTaken = 0;
         StartCoroutine(AppearCoroutine(feetGroundPosition));
     }
 
@@ -118,6 +140,17 @@ public class ClothFollowBehavior : MonoBehaviour {
         if (gameManager == null || gameManager.gameState != GlobalEnums.GameState.PLAYING)
             return;
 
+        if (_invulnTimer > 0f)
+            _invulnTimer -= Time.deltaTime;
+        CheckIncomingDamage();
+
+        // Hace que los enemigos cercanos puedan elegir a Cloth como objetivo
+        _retargetTimer -= Time.deltaTime;
+        if (_retargetTimer <= 0f) {
+            _retargetTimer = 0.25f;
+            Hooks.EnemyTargetRedirector.Retarget(gameObject, IsTargetable);
+        }
+
         if (_isBusy) {
             _busyTimer += Time.deltaTime;
             if (_busyTimer > BusyRescueTimeout)
@@ -129,8 +162,11 @@ public class ClothFollowBehavior : MonoBehaviour {
         Vector2 heroGround = ClothCompanionManager.GetKnightGroundPosition();
         Vector2 currentFeet = _sensor.Feet();
 
+        //Validamos si el héroe está tocando el suelo o si tiene un piso muy cerca (max 8f)
+        bool heroIsSafe = HeroCtrl.instance.cState.onGround || Mathf.Abs(heroGround.y - _sensor.HeroCenter().y) <= maxAllowedGroundDistance;
+
         // Rescate por desincronización de distancia o piso vertical
-        if (Vector2.Distance(currentFeet, heroGround) > RescueDistanceTotal || Mathf.Abs(heroGround.y - currentFeet.y) > RescueDistanceY) {
+        if (heroIsSafe && (Vector2.Distance(currentFeet, heroGround) > RescueDistanceTotal || Mathf.Abs(heroGround.y - currentFeet.y) > RescueDistanceY)) {
             Rescue();
             return;
         }
@@ -149,6 +185,8 @@ public class ClothFollowBehavior : MonoBehaviour {
             _followCooldown -= Time.deltaTime;
         if (_attackCooldown > 0f)
             _attackCooldown -= Time.deltaTime;
+        if (_retreatCooldown > 0f)
+            _retreatCooldown -= Time.deltaTime;
 
         _scanTimer -= Time.deltaTime;
         if (_scanTimer <= 0f) {
@@ -156,17 +194,30 @@ public class ClothFollowBehavior : MonoBehaviour {
             _currentEnemy = _combat.FindBestEnemy(_sensor.BodyCenter(), _sensor.HeroCenter(), gameObject);
         }
 
+        // Reflejo cuerpo a cuerpo: cualquier enemigo que toque su hitbox pasa a ser el objetivo
+        if (_attackCooldown <= 0f) {
+            var touching = _combat.FindEnemyInHitbox(transform, gameObject);
+            if (touching != null)
+                _currentEnemy = touching;
+        }
+
         Vector2 myCenter = _sensor.BodyCenter();
 
         if (_currentEnemy != null && _combat.IsValidTarget(_currentEnemy, gameObject)) {
             Vector2 enemyCenter = ClothSpatialSensor.EnemyCenter(_currentEnemy);
-            float deltaX = Mathf.Abs(enemyCenter.x - myCenter.x);
-            float deltaY = enemyCenter.y - myCenter.y;
+
+            // La distancia de ataque se mide desde el centro de la hitbox (orientada hacia el enemigo)
+            float facingToEnemy = enemyCenter.x >= myCenter.x ? 1f : -1f;
+            Vector2 attackCenter = ClothCombatHandler.GetAttackBoxCenter(transform.position, facingToEnemy);
+
+            float deltaX = Mathf.Abs(enemyCenter.x - attackCenter.x);
+            float deltaY = enemyCenter.y - attackCenter.y;
             bool hasLos = ClothSpatialSensor.HasLineOfSight(myCenter, enemyCenter);
             float maxReach = _sensor.GetMaxReach();
 
             if (hasLos && deltaX <= ClothCombatHandler.AttackRange && deltaY <= maxReach) {
-                if (_attackCooldown <= 0f) {
+                // Si el enemigo está pegado, retrocede con un salto sin golpe para reposicionarse; si no, ataca
+                if (_attackCooldown <= 0f && !TryStartRetreat(_currentEnemy, myCenter)) {
                     StartCoroutine(AttackCoroutine(_currentEnemy));
                 }
             } else if (hasLos && deltaX <= ClothCombatHandler.AttackAnimDistance && deltaY > maxReach) {
@@ -178,7 +229,7 @@ public class ClothFollowBehavior : MonoBehaviour {
         } else {
             bool isFarX = Mathf.Abs(heroGround.x - currentFeet.x) > FollowDistanceX;
             bool isFarY = Mathf.Abs(heroGround.y - currentFeet.y) > FollowDistanceY;
-            if ((isFarX || isFarY) && _followCooldown <= 0f) {
+            if ((isFarX || isFarY) && _followCooldown <= 0f && heroIsSafe) {
                 MoveToTarget(heroGround, isEnemyTarget: false);
             }
         }
@@ -205,6 +256,7 @@ public class ClothFollowBehavior : MonoBehaviour {
 
     private IEnumerator AppearCoroutine(Vector2 feetGroundPosition) {
         _isBusy = true;
+        _isBurrowing = true;
 
         Vector3 resolvedPosition = _sensor.ResolveSafeSpot(feetGroundPosition);
         transform.position = resolvedPosition;
@@ -235,11 +287,13 @@ public class ClothFollowBehavior : MonoBehaviour {
         _motor.CompleteAppear();
 
         _followCooldown = FollowCooldownAfterJump;
+        _isBurrowing = false;
         _isBusy = false;
     }
 
     private IEnumerator BurrowCoroutine(Vector2 targetFeetPosition) {
         _isBusy = true;
+        _isBurrowing = true;
 
         _motor.PrepareForBurrowOrAppear();
 
@@ -265,33 +319,107 @@ public class ClothFollowBehavior : MonoBehaviour {
         _animator.Play("Jump Attack Antic");
         yield return new WaitForSeconds(0.1f);
 
+        float diveMultiplier = Mathf.Max(1f, JumpFallGravityMultiplier);
+
         _motor.BeginAirborne();
-        _motor.Launch(distX, distY, JumpNormalMaxSpeedX, 1f, _sensor.GetCeilingClearance(), out _, out float totalFlightTime, out _);
+        _motor.Launch(
+            distX, distY,
+            JumpNormalMaxSpeedX,
+            diveMultiplier,
+            _sensor.GetCeilingClearance(),
+            out float apexTime, out float totalFlightTime, out float launchGravityScale);
         _animator.Play("Jump");
 
+        bool isDiving = false;
         float elapsed = 0f;
         while (elapsed < totalFlightTime + 2.5f) {
             elapsed += Time.deltaTime;
+
+            // Caída más rápida tras el ápice
+            if (!isDiving && elapsed >= apexTime) {
+                _motor.SetGravityScale(launchGravityScale * diveMultiplier);
+                isDiving = true;
+            }
+
             if (elapsed > 0.25f && _motor.VelocityY <= 0.1f && _sensor.IsGrounded())
                 break;
             yield return null;
         }
 
         _motor.EndAirborne();
+
+        yield return PlayRecover(JumpRecoverDurationScale, 0);
         _animator.Play("Idle");
 
         _followCooldown = FollowCooldownAfterJump;
         _isBusy = false;
     }
 
+    /// <summary>
+    /// Reproduce "Jump Attack Recover" desde el frame indicado (0 = inicio) y espera su duración escalada.
+    /// </summary>
+    private IEnumerator PlayRecover(float durationScale, int startFrame) {
+        var clip = _animator.GetClipByName("Jump Attack Recover");
+        if (clip == null || clip.frames == null || clip.frames.Length == 0) {
+            _animator.Play("Jump Attack Recover");
+            yield return new WaitForSeconds(Mathf.Max(0f, 0.4f * durationScale));
+            yield break;
+        }
+
+        int totalFrames = clip.frames.Length;
+        int start = Mathf.Clamp(startFrame, 0, totalFrames - 1);
+        float fps = clip.fps > 0 ? clip.fps : 12f;
+
+        _animator.PlayFromFrame(clip, start);
+        yield return new WaitForSeconds(Mathf.Max(0f, (totalFrames - start) / fps * durationScale));
+    }
+
+    /// <summary>
+    /// Duración de los frames de "Jump" que se muestran tras el golpe antes de pasar a la animación de caída.
+    /// </summary>
+    private float GetPostAttackJumpDuration() {
+        var clip = _animator.GetClipByName("Jump");
+        float fps = clip != null && clip.fps > 0 ? clip.fps : 12f;
+        return Mathf.Max(0, ClothCombatHandler.PostAttackJumpFrames) / fps;
+    }
+
+    /// <summary>
+    /// Aplica el daño con la hitbox de ataque en su posición actual (invertida según la orientación).
+    /// </summary>
+    private void DoSlam(float facing) {
+        _combat.ExecuteAttackBoxDamage(
+            gameObject,
+            ClothCombatHandler.GetAttackBoxCenter(transform.position, facing),
+            ClothCombatHandler.AttackBoxSize,
+            ClothCombatHandler.DefaultSlamDamageAmount);
+    }
+
     private IEnumerator AttackCoroutine(GameObject enemyTarget) {
         _isBusy = true;
 
+        // La orientación se fija al iniciar el ataque y NO cambia hasta que termine
         Vector2 targetCenter = ClothSpatialSensor.EnemyCenter(enemyTarget);
         _motor.TurnToFace(targetCenter.x - transform.position.x);
+        float facing = ClothCombatHandler.GetFacing(transform);
+
+        // El tipo de salto se decide antes del antic (cada uno tiene su duración)
+        Vector2 attackCenter = ClothCombatHandler.GetAttackBoxCenter(transform.position, facing);
+        bool isClose = ClothCombatHandler.CloseAttackDistance > 0f
+            && Vector2.Distance(attackCenter, targetCenter) <= ClothCombatHandler.CloseAttackDistance
+            && Mathf.Abs(targetCenter.y - attackCenter.y) <= ClothCombatHandler.CloseAttackMaxDeltaY;
+
+        // Parámetros según el tipo de ataque
+        float anticDuration = isClose ? ClothCombatHandler.CloseAnticDuration : ClothCombatHandler.AttackAnticDuration;
+        float animLeadTime = isClose ? ClothCombatHandler.CloseAnimLeadTime : ClothCombatHandler.AttackAnimLeadTime;
+        float animDistance = isClose ? ClothCombatHandler.CloseAnimDistance : ClothCombatHandler.AttackAnimDistance;
+        float airHitDistance = isClose ? ClothCombatHandler.CloseAirHitDistance : ClothCombatHandler.AirHitDistance;
+        float landCheckDelay = isClose ? ClothCombatHandler.CloseLandCheckDelay : ClothCombatHandler.AttackLandCheckDelay;
+        float diveMultiplier = isClose ? ClothCombatHandler.CloseDiveGravityMultiplier : ClothCombatHandler.DiveGravityMultiplier;
+        float recoverScale = isClose ? ClothCombatHandler.CloseRecoverDurationScale : ClothCombatHandler.RecoverDurationScale;
+        float cooldownAfter = isClose ? ClothCombatHandler.CloseAttackCooldown : AttackCooldown;
 
         _animator.Play("Jump Attack Antic");
-        yield return new WaitForSeconds(0.1f);
+        yield return new WaitForSeconds(Mathf.Max(0f, anticDuration));
 
         if (!_combat.IsValidTarget(enemyTarget, gameObject)) {
             _animator.Play("Idle");
@@ -300,78 +428,340 @@ public class ClothFollowBehavior : MonoBehaviour {
             yield break;
         }
 
+        // Recalcular con la posición actual: el salto apunta a que el CENTRO DE LA HITBOX llegue al enemigo
         targetCenter = ClothSpatialSensor.EnemyCenter(enemyTarget);
-        Vector2 currentCenter = _sensor.BodyCenter();
+        attackCenter = ClothCombatHandler.GetAttackBoxCenter(transform.position, facing);
+        float distX = targetCenter.x - attackCenter.x;
+        float distY = targetCenter.y - attackCenter.y;
 
-        _motor.BeginAirborne();
-        _motor.Launch(
-            targetCenter.x - currentCenter.x,
-            targetCenter.y - currentCenter.y,
-            ClothCombatHandler.AttackMaxSpeedX,
-            ClothCombatHandler.DiveGravityMultiplier,
-            _sensor.GetCeilingClearance(),
-            out float apexTime,
-            out float totalFlightTime,
-            out float launchGravityScale);
-
-        _animator.Play("Jump");
-
-        float elapsed = 0f;
+        float apexTime, totalFlightTime, launchGravityScale;
         bool hasSlammed = false;
         bool hasPlayedAttackAnim = false;
         bool isDiving = false;
 
+        _motor.BeginAirborne();
+
+        if (isClose) {
+            // Salto corto: se mantiene "Jump Attack Antic" mientras sube; sin animación "Jump"
+            _motor.Launch(
+                distX, distY,
+                ClothCombatHandler.CloseAttackSpeedX,
+                diveMultiplier,
+                _sensor.GetCeilingClearance(),
+                out apexTime, out totalFlightTime, out launchGravityScale,
+                ClothCombatHandler.CloseJumpHeight,
+                ClothCombatHandler.CloseApexTime,
+                facing);
+        } else {
+            _motor.Launch(
+                distX, distY,
+                ClothCombatHandler.AttackMaxSpeedX,
+                diveMultiplier,
+                _sensor.GetCeilingClearance(),
+                out apexTime, out totalFlightTime, out launchGravityScale,
+                -1f, -1f,
+                facing);
+
+            _animator.Play("Jump");
+        }
+
+        float elapsed = 0f;
+        float slamElapsed = 0f;
+        // Caída tras el golpe: 0 = aún no, 1 = "Jump" unos frames, 2 = "Jump Attack Antic" como caída
+        int fallPhase = 0;
+        float fallPhaseStart = 0f;
+        float jumpPhaseDuration = 0f;
+
         while (elapsed < totalFlightTime + 2.5f) {
             elapsed += Time.deltaTime;
 
+            // Mantener la orientación fijada durante todo el ataque
+            _motor.TurnToFace(facing);
+
             if (!isDiving && elapsed >= apexTime) {
-                _motor.SetGravityScale(launchGravityScale * ClothCombatHandler.DiveGravityMultiplier);
+                _motor.SetGravityScale(launchGravityScale * diveMultiplier);
                 isDiving = true;
             }
 
             Vector2 currentEnemyPosition = _combat.IsValidTarget(enemyTarget, gameObject) ? ClothSpatialSensor.EnemyCenter(enemyTarget) : targetCenter;
-            float distanceToEnemy = Vector2.Distance(_sensor.BodyCenter(), currentEnemyPosition);
+            Vector2 currentAttackCenter = ClothCombatHandler.GetAttackBoxCenter(transform.position, facing);
+            float distanceToEnemy = Vector2.Distance(currentAttackCenter, currentEnemyPosition);
             bool isDescending = _motor.VelocityY < 0f;
 
-            if (!hasPlayedAttackAnim && isDescending && (distanceToEnemy <= ClothCombatHandler.AttackAnimDistance || elapsed >= totalFlightTime - 0.25f)) {
+            // "Jump Attack" solo se reproduce al descender (por distancia o por tiempo restante de vuelo)
+            if (!hasPlayedAttackAnim && isDescending && (distanceToEnemy <= animDistance || elapsed >= totalFlightTime - animLeadTime)) {
                 _animator.Play("Jump Attack");
                 hasPlayedAttackAnim = true;
             }
 
-            bool isLanded = elapsed > 0.25f && _motor.VelocityY <= 0.1f && _sensor.IsGrounded();
+            bool isLanded = elapsed > landCheckDelay && _motor.VelocityY <= 0.1f && _sensor.IsGrounded();
 
-            if (!hasSlammed && (isLanded || elapsed >= totalFlightTime || (hasPlayedAttackAnim && distanceToEnemy <= ClothCombatHandler.AirHitDistance))) {
+            if (!hasSlammed && (isLanded || elapsed >= totalFlightTime || (hasPlayedAttackAnim && isDescending && distanceToEnemy <= airHitDistance))) {
                 if (!hasPlayedAttackAnim) {
                     _animator.Play("Jump Attack");
                     hasPlayedAttackAnim = true;
                 }
-                _combat.ExecuteSlamAreaDamage(gameObject, transform.position, ClothCombatHandler.DefaultSlamRadius, ClothCombatHandler.DefaultSlamDamageAmount);
+                DoSlam(facing);
                 hasSlammed = true;
+                slamElapsed = elapsed;
             }
 
             if (isLanded)
                 break;
+
+            // Tras el golpe (haya conectado o no), si sigue cayendo: "Jump" unos frames y luego
+            // "Jump Attack Antic" como animación de caída hasta tocar el suelo.
+            if (hasSlammed) {
+                if (fallPhase == 0 && elapsed - slamElapsed >= ClothCombatHandler.PostAttackFallDelay) {
+                    _animator.Play("Jump");
+                    jumpPhaseDuration = GetPostAttackJumpDuration();
+                    fallPhaseStart = elapsed;
+                    fallPhase = 1;
+                } else if (fallPhase == 1 && elapsed - fallPhaseStart >= jumpPhaseDuration) {
+                    _animator.Play("Jump Attack Antic");
+                    fallPhase = 2;
+                }
+            }
+
             yield return null;
         }
 
         if (!hasSlammed) {
-            _combat.ExecuteSlamAreaDamage(gameObject, transform.position, ClothCombatHandler.DefaultSlamRadius, ClothCombatHandler.DefaultSlamDamageAmount);
+            DoSlam(facing);
         }
 
         _motor.EndAirborne();
 
-        _animator.Play("Jump Attack Recover");
-        var recoverClip = _animator.GetClipByName("Jump Attack Recover");
-        float recoverDuration = recoverClip != null && recoverClip.fps > 0
-            ? recoverClip.frames.Length / (float) recoverClip.fps
-            : 0.4f;
-
-        yield return new WaitForSeconds(recoverDuration);
+        // Si hubo caída tras el golpe, el Recover arranca desde el frame configurado; si no, completo
+        int recoverStartFrame = fallPhase > 0 ? Mathf.Max(0, ClothCombatHandler.PostAttackFallRecoverStartFrame - 1) : 0;
+        yield return PlayRecover(recoverScale, recoverStartFrame);
 
         _animator.Play("Idle");
 
-        _attackCooldown = AttackCooldown;
+        _attackCooldown = cooldownAfter;
         _isBusy = false;
+    }
+
+    /// <summary>
+    /// Si el enemigo está pegado a Cloth, inicia un salto de retroceso sin golpe. Devuelve true si lo inició.
+    /// </summary>
+    private bool TryStartRetreat(GameObject enemyTarget, Vector2 myCenter) {
+        float trigger = ClothCombatHandler.RetreatTriggerDistance;
+        if (trigger <= 0f || _retreatCooldown > 0f || ClothCombatHandler.IsPlayer(enemyTarget))
+            return false;
+
+        Vector2 gap = ClothSpatialSensor.GetGapToTarget(enemyTarget, myCenter);
+        if (gap.x > trigger || gap.y > ClothCombatHandler.RetreatMaxDeltaY)
+            return false;
+
+        Vector2 enemyCenter = ClothSpatialSensor.EnemyCenter(enemyTarget);
+        float towardEnemy = enemyCenter.x >= myCenter.x ? 1f : -1f;
+        float awayDirection = -towardEnemy;
+
+        // El punto de aterrizaje debe ser suelo libre y alcanzable; si no (pared, abismo), mejor atacar
+        Vector2 myFeet = _sensor.Feet();
+        Vector2 probe = new(myFeet.x + (awayDirection * Mathf.Max(0.5f, ClothCombatHandler.RetreatDistance)), myFeet.y + 1f);
+        if (!ClothCompanionManager.TryFindGround(probe, out Vector2 landingFeet, 4f))
+            return false;
+        if (Mathf.Abs(landingFeet.y - myFeet.y) > 2f)
+            return false;
+        if (_sensor.IsBlockedAt(_sensor.FeetToPosition(landingFeet)))
+            return false;
+        if (!ClothSpatialSensor.HasLineOfSight(myCenter, landingFeet + (Vector2.up * _motor.FeetOffset)))
+            return false;
+
+        StartCoroutine(RetreatCoroutine(towardEnemy, landingFeet));
+        return true;
+    }
+
+    /// <summary>
+    /// Salto hacia atrás sin golpe: "Jump Attack Antic" durante todo el vuelo (también al caer),
+    /// "Jump Attack Recover" al tocar el suelo y luego Idle. Cloth sigue mirando al enemigo.
+    /// </summary>
+    private IEnumerator RetreatCoroutine(float facing, Vector2 landingFeet) {
+        _isBusy = true;
+        _motor.TurnToFace(facing);
+
+        _animator.Play("Jump Attack Antic");
+        yield return new WaitForSeconds(Mathf.Max(0f, ClothCombatHandler.RetreatAnticDuration));
+
+        Vector2 myFeet = _sensor.Feet();
+        float distX = landingFeet.x - myFeet.x;
+        float distY = landingFeet.y - myFeet.y;
+        float diveMultiplier = Mathf.Max(1f, ClothCombatHandler.RetreatDiveGravityMultiplier);
+
+        _motor.BeginAirborne();
+        _motor.Launch(
+            distX, distY,
+            ClothCombatHandler.RetreatSpeedX,
+            diveMultiplier,
+            _sensor.GetCeilingClearance(),
+            out float apexTime, out float totalFlightTime, out float launchGravityScale,
+            ClothCombatHandler.RetreatJumpHeight,
+            ClothCombatHandler.RetreatApexTime,
+            Mathf.Abs(distX) > 0.01f ? Mathf.Sign(distX) : 0f);
+
+        bool isDiving = false;
+        float elapsed = 0f;
+        while (elapsed < totalFlightTime + 2.5f) {
+            elapsed += Time.deltaTime;
+            _motor.TurnToFace(facing);
+
+            if (!isDiving && elapsed >= apexTime) {
+                _motor.SetGravityScale(launchGravityScale * diveMultiplier);
+                isDiving = true;
+            }
+
+            if (elapsed > ClothCombatHandler.RetreatLandCheckDelay && _motor.VelocityY <= 0.1f && _sensor.IsGrounded())
+                break;
+            yield return null;
+        }
+
+        _motor.EndAirborne();
+
+        yield return PlayRecover(ClothCombatHandler.RetreatRecoverDurationScale, 0);
+        _animator.Play("Idle");
+
+        _retreatCooldown = ClothCombatHandler.RetreatCooldown;
+        _attackCooldown = 0.1f;
+        _isBusy = false;
+    }
+
+    #endregion
+
+    #region Damage Received
+
+    /// <summary>
+    /// Detecta ataques y contacto de enemigos: cualquier DamageHero activo que solape con el cuerpo de Cloth.
+    /// (Los DamageHero solo reaccionan a la capa del Caballero, por eso se consulta el solape manualmente.)
+    /// </summary>
+    private void CheckIncomingDamage() {
+        if (!Settings.CanTakeDamage || _invulnTimer > 0f || !IsTargetable)
+            return;
+
+        Vector2 center = _sensor.BodyCenter();
+        Vector2 size = _sensor.BodySize() * 0.9f;
+        int count = Physics2D.OverlapBoxNonAlloc(center, size, 0f, _damageBuffer, ~ClothCompanionManager.TerrainMask);
+
+        for (int i = 0; i < count; i++) {
+            var col = _damageBuffer[i];
+            if (col == null || col.transform.IsChildOf(transform))
+                continue;
+
+            var damageHero = col.GetComponent<DamageHero>();
+            if (damageHero == null || !damageHero.isActiveAndEnabled || damageHero.damageDealt <= 0)
+                continue;
+
+            // Peligros del entorno (pinchos, ácido...) no cuentan; solo enemigos
+            if (damageHero.hazardType > 1)
+                continue;
+
+            var owner = col.GetComponentInParent<HealthManager>();
+            Vector2 sourcePosition = owner != null ? owner.transform.position : col.transform.position;
+
+            ReceiveHit(sourcePosition, damageHero.damageDealt);
+            return;
+        }
+    }
+
+    private void ReceiveHit(Vector2 sourcePosition, int damage) {
+        _damageTaken += Mathf.Max(1, damage);
+        _invulnTimer = Mathf.Max(0f, Settings.HurtInvulnerability);
+        bool defeated = Settings.MaxHealth > 0 && _damageTaken >= Settings.MaxHealth;
+
+        float dx = _sensor.BodyCenter().x - sourcePosition.x;
+        float direction = Mathf.Abs(dx) > 0.05f ? Mathf.Sign(dx) : -ClothCombatHandler.GetFacing(transform);
+
+        ClothTheWarriorCompanionMod.Instance?.LogDebug($"Cloth recibió {damage} de daño ({_damageTaken}/{Settings.MaxHealth}).");
+
+        ResetState();
+        StartCoroutine(defeated ? DefeatedCoroutine(direction) : HurtCoroutine(direction));
+    }
+
+    private void PlayHurtAnimation() {
+        float fps = Settings.HurtAnimFps;
+        if (fps <= 0f)
+            return; // animación de daño desactivada
+
+        var clip = _animator.GetClipByName("Jump Attack Antic");
+        if (clip != null)
+            _animator.Play(clip, 0f, fps);
+        else
+            _animator.Play("Jump Attack Antic");
+    }
+
+    /// <summary>
+    /// Impulso de knockback (alejándose del atacante) con la animación de daño; termina al tocar suelo.
+    /// </summary>
+    private IEnumerator KnockbackRoutine(float direction) {
+        float speedX = Settings.KnockbackSpeedX;
+        _motor.ApplyKnockback(new Vector2(direction * speedX, Settings.KnockbackSpeedY));
+        PlayHurtAnimation();
+
+        float duration = Mathf.Max(0.05f, Settings.HurtStunDuration);
+        float elapsed = 0f;
+        while (elapsed < duration) {
+            elapsed += Time.deltaTime;
+            _motor.SetVelocityX(direction * speedX * (1f - Mathf.Clamp01(elapsed / duration)));
+            yield return null;
+        }
+        _motor.SetVelocityX(0f);
+
+        float airTime = 0f;
+        while (airTime < 1.5f && !(_motor.VelocityY <= 0.1f && _sensor.IsGrounded())) {
+            airTime += Time.deltaTime;
+            yield return null;
+        }
+    }
+
+    private IEnumerator HurtCoroutine(float direction) {
+        _isBusy = true;
+        _motor.TurnToFace(-direction); // mira hacia el atacante
+
+        yield return KnockbackRoutine(direction);
+
+        _animator.Play("Idle");
+        _attackCooldown = 0.3f;
+        _isBusy = false;
+    }
+
+    /// <summary>
+    /// Sin vida: recibe el golpe, se hunde, permanece fuera un tiempo y reaparece junto al Caballero con la vida completa.
+    /// </summary>
+    private IEnumerator DefeatedCoroutine(float direction) {
+        _isBusy = true;
+        _isDowned = true;
+        _motor.TurnToFace(-direction);
+
+        yield return KnockbackRoutine(direction);
+
+        _motor.PrepareForBurrowOrAppear();
+
+        var clip = _animator.GetClipByName("Emerge");
+        if (clip != null) {
+            _animator.Play(clip);
+            _animator.Stop();
+            float frameTime = 1f / (clip.fps > 0 ? clip.fps : 15f);
+            for (int i = clip.frames.Length - 1; i >= 0; i--) {
+                _animator.SetFrame(i);
+                yield return new WaitForSeconds(frameTime);
+            }
+        }
+
+        if (_meshRenderer != null)
+            _meshRenderer.enabled = false;
+
+        float wait = Mathf.Max(0f, Settings.DefeatedReturnDelay);
+        float elapsed = 0f;
+        while (elapsed < wait) {
+            elapsed += Time.deltaTime;
+            _busyTimer = 0f; // evita el rescate por atasco mientras está fuera de combate
+            yield return null;
+        }
+
+        _damageTaken = 0;
+        _isDowned = false;
+        yield return AppearCoroutine(ClothCompanionManager.GetKnightGroundPosition());
     }
 
     #endregion

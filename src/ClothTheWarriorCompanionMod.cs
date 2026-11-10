@@ -48,6 +48,7 @@ public sealed class ClothTheWarriorCompanionMod : Mod, ITogglableMod {
 		ModHooks.HeroUpdateHook -= CompanionInputListener.OnHeroUpdate;
 		ModHooks.SlashHitHook -= EnemyMarker.OnSlashHit;
 		On.PlayMakerFSM.OnEnable -= ClothFsmModifier.OnFsmEnableHook;
+		EnemyTargetRedirector.RestoreAll();
 		USceneManager.activeSceneChanged -= OnActiveSceneChanged;
 
 		Instance = null;
