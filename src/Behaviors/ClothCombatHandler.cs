@@ -11,6 +11,7 @@ internal sealed class ClothCombatHandler {
     private static ClothSettings Settings => ClothSettings.Current;
 
     public static int DefaultSlamDamageAmount => Settings.SlamDamageAmount;
+    public static int CloseSlamDamageAmount => Settings.CloseSlamDamageAmount;
     public static float AttackRange => Settings.AttackRange;
     public static float AttackMaxSpeedX => Settings.AttackMaxSpeedX;
     public static float DiveGravityMultiplier => Settings.DiveGravityMultiplier;
@@ -150,7 +151,7 @@ internal sealed class ClothCombatHandler {
             if (col == null) continue;
 
             // El Caballero no tiene HealthManager: se detecta aparte (solo en modo prueba/duelo)
-            if (AttackPlayerEnabled && !playerInBox && col.GetComponentInParent<HeroController>() != null) {
+            if ((AttackPlayerEnabled || Settings.ClothCanHurtKnight) && !playerInBox && col.GetComponentInParent<HeroController>() != null) {
                 playerInBox = true;
                 continue;
             }
@@ -233,10 +234,25 @@ internal sealed class ClothCombatHandler {
     }
 
     /// <summary>
-    /// Punto de extensión del duelo. De momento solo registra el impacto: NO aplica daño al Caballero.
+    /// La hitbox de Cloth tocó al Caballero: le hace daño si ClothCanHurtKnight está activo (el juego aplica
+    /// invulnerabilidad, knockback y efectos). Además dispara PlayerHit como punto de extensión.
     /// </summary>
     private static void OnPlayerHit(GameObject source, Vector2 boxCenter, int damageAmount) {
-        ClothTheWarriorCompanionMod.Instance?.LogDebug($"[Test] La hitbox de Cloth conectó con el Caballero (daño configurado: {damageAmount}). Sin daño aplicado.");
+        int knightDamage = Settings.ClothDamageToKnight;
+
+        if (Settings.ClothCanHurtKnight && knightDamage > 0) {
+            var hero = HeroController.instance;
+            if (hero != null) {
+                var side = source.transform.position.x < hero.transform.position.x
+                    ? GlobalEnums.CollisionSide.left
+                    : GlobalEnums.CollisionSide.right;
+                hero.TakeDamage(source, side, knightDamage, 1);
+                ClothTheWarriorCompanionMod.Instance?.LogDebug($"La hitbox de Cloth golpeó al Caballero ({knightDamage} de daño).");
+            }
+        } else {
+            ClothTheWarriorCompanionMod.Instance?.LogDebug("La hitbox de Cloth conectó con el Caballero, sin daño (desactivado).");
+        }
+
         PlayerHit?.Invoke(source, boxCenter, damageAmount);
     }
 }

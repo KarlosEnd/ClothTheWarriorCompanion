@@ -1,6 +1,7 @@
+using System;
 using System.IO;
-
 using Newtonsoft.Json;
+using UnityEngine;
 
 namespace ClothTheWarriorCompanion.Config;
 
@@ -229,6 +230,81 @@ public sealed class ClothSettings {
     /// </summary>
     public float AttackCooldown { get; set; } = 1.0f;
 
+    /// <summary>
+    /// Si está activo, Cloth predecirá la posición futura del enemigo basándose en su velocidad para ajustar sus saltos.
+    /// </summary>
+    public bool PredictTargetMovement { get; set; } = true;
+
+    /// <summary>
+    /// Tiempo máximo (en segundos) a predecir hacia el futuro.
+    /// </summary>
+    public float PredictionMaxTime { get; set; } = 0.8f;
+
+    /// <summary>
+    /// Distancia máxima de ajuste permitido por la predicción. Evita que calcule puntos demasiado lejanos si el enemigo va muy rápido.
+    /// </summary>
+    public float PredictionMaxDistance { get; set; } = 15f;
+
+    /// <summary>
+    /// Margen de seguridad entre el collider de Cloth y el del enemigo para que la hitbox conecte sin que Cloth choque su cuerpo primero.
+    /// </summary>
+    public float HitboxClearanceMargin { get; set; } = 0.35f;
+
+    /// <summary>
+    /// Anticipa si un enemigo va a colisionar con Cloth por trayectoria calculando el Tiempo hasta Colisión (TTC).
+    /// </summary>
+    public bool DefensivePredictionEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Tiempo máximo hacia el futuro para detectar amenazas de colisión inminente (en segundos).
+    /// </summary>
+    public float ThreatLookaheadTime { get; set; } = 1.2f;
+
+    /// <summary>
+    /// Margen extra de seguridad alrededor de los colliders para la detección de colisiones inminentes.
+    /// </summary>
+    public float ThreatMargin { get; set; } = 0.5f;
+
+    /// <summary>
+    /// Margen mínimo para que el aterrizaje de esquiva quede fuera de la línea de fuego del enemigo.
+    /// </summary>
+    public float DodgeClearanceMargin { get; set; } = 1.5f;
+
+    /// <summary>
+    /// Distancia mínima de desplazamiento al realizar una esquiva evasiva.
+    /// </summary>
+    public float DodgeMinDistance { get; set; } = 6.0f;
+
+    /// <summary>
+    /// Si una amenaza colisionará pronto y no alcanza a atacar a tiempo, realiza un salto corto de esquiva y contraataque inmediato.
+    /// </summary>
+    public bool ThreatDodgeHopEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Si no hay suelo para un salto corto de esquiva, realiza un salto de evasión para eludir la colisión.
+    /// </summary>
+    public bool ThreatDodgeJumpEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Peso de la cercanía en la prioridad de selección de objetivos entre múltiples enemigos.
+    /// </summary>
+    public float TargetPriorityDistanceWeight { get; set; } = 0.35f;
+
+    /// <summary>
+    /// Peso de la velocidad del enemigo en la prioridad de selección.
+    /// </summary>
+    public float TargetPrioritySpeedWeight { get; set; } = 0.20f;
+
+    /// <summary>
+    /// Peso de la velocidad de aproximación directa hacia Cloth (máxima prioridad para embestidas frontales rápidas).
+    /// </summary>
+    public float TargetPriorityApproachWeight { get; set; } = 0.35f;
+
+    /// <summary>
+    /// Peso de la protección al Caballero (enemigos que cargan hacia el Caballero ganan prioridad).
+    /// </summary>
+    public float TargetPriorityKnightProtectionWeight { get; set; } = 0.10f;
+
     #endregion
 
     #region Attack Hitbox
@@ -253,6 +329,11 @@ public sealed class ClothSettings {
     /// Alto de la hitbox de ataque.
     /// </summary>
     public float AttackBoxHeight { get; set; } = 5f;
+
+    /// <summary>
+    /// Duración en segundos que la hitbox del ataque (y la postura) permanecen activas y haciendo daño una vez asestado el golpe.
+    /// </summary>
+    public float AttackActiveDuration { get; set; } = 0.25f;
 
     #endregion
 
@@ -366,8 +447,7 @@ public sealed class ClothSettings {
     #region Post-Attack Fall
 
     /// <summary>
-    /// Segundos tras el golpe (haya conectado o no) antes de volver a la animación "Jump" si Cloth sigue en el aire.
-    /// Aplica a los dos ataques (normal y corto).
+    /// Segundos tras el tiempo de hit y la pose de impacto (AttackActiveDuration) antes de volver a "Jump" si no hay suelo.
     /// </summary>
     public float PostAttackFallDelay { get; set; } = 0.1f;
 
@@ -460,19 +540,44 @@ public sealed class ClothSettings {
     public float HurtInvulnerability { get; set; } = 0.8f;
 
     /// <summary>
-    /// Duración (s) del aturdimiento y del impulso de knockback tras recibir un golpe.
+    /// Duración (s) del aturdimiento durante el cual Cloth no puede actuar tras recibir un golpe.
     /// </summary>
-    public float HurtStunDuration { get; set; } = 0.35f;
+    public float HurtStunDuration { get; set; } = 0.22f;
 
     /// <summary>
     /// Velocidad horizontal inicial del knockback (se aleja del atacante).
     /// </summary>
-    public float KnockbackSpeedX { get; set; } = 12f;
+    public float KnockbackSpeedX { get; set; } = 14f;
 
     /// <summary>
-    /// Velocidad vertical inicial del knockback.
+    /// Velocidad vertical inicial del knockback (elevación).
     /// </summary>
     public float KnockbackSpeedY { get; set; } = 8f;
+
+    /// <summary>
+    /// Si está activo, el knockback se calcula según la dirección real del ataque (los golpes hacia abajo aplastan contra el suelo en lugar de elevar).
+    /// </summary>
+    public bool KnockbackDirectional { get; set; } = true;
+
+    /// <summary>
+    /// Escala de gravedad aplicada durante el knockback. Asegura caída ágil con peso real sin flotar.
+    /// </summary>
+    public float KnockbackGravityScale { get; set; } = 2.2f;
+
+    /// <summary>
+    /// Tasa de desaceleración horizontal del knockback para un deslizamiento fluido y reactivo.
+    /// </summary>
+    public float KnockbackDeceleration { get; set; } = 38f;
+
+    /// <summary>
+    /// Duración máxima (s) de la postura/animación de daño antes de recuperar la postura.
+    /// </summary>
+    public float HurtAnimDuration { get; set; } = 0.22f;
+
+    /// <summary>
+    /// Si Cloth toca el suelo tras el golpe, recupera el control de inmediato si terminó el aturdimiento base.
+    /// </summary>
+    public bool KnockbackRecoverOnLand { get; set; } = true;
 
     /// <summary>
     /// FPS con los que se reproduce "Jump Attack Antic" (3 frames) como animación de daño. 0 = animación desactivada.
@@ -494,12 +599,271 @@ public sealed class ClothSettings {
     /// </summary>
     public float EnemyTargetRange { get; set; } = 20f;
 
+    /// <summary>
+    /// Segundos entre cada reasignación de objetivos de los enemigos hacia Cloth. Menor = la detectan antes (algo más costoso).
+    /// </summary>
+    public float EnemyRetargetInterval { get; set; } = 0.15f;
+
+    #endregion
+
+    #region Hit Freeze & Slam Damage
+
+    /// <summary>
+    /// Segundos que Cloth queda congelada en el aire (o donde esté) justo al recibir un golpe, antes del knockback. 0 = desactivado.
+    /// </summary>
+    public float HitFreezeDuration { get; set; } = 0.06f;
+
+    /// <summary>
+    /// Daño del golpe en el ataque de salto corto (también el encadenado tras el retroceso). SlamDamageAmount es el del salto largo.
+    /// </summary>
+    public int CloseSlamDamageAmount { get; set; } = 25;
+
+    /// <summary>
+    /// Si está activo, tras el salto de retroceso Cloth encadena sí o sí un ataque de salto corto contra el enemigo.
+    /// </summary>
+    public bool RetreatChainsAttack { get; set; } = true;
+
+    #endregion
+
+    #region Jump Planner
+
+    /// <summary>
+    /// Si está activo, Cloth simula cada salto contra el terreno antes de ejecutarlo (y elige variantes, saltos de
+    /// posicionamiento o puntos de aproximación seguros). Si se desactiva, usa el comportamiento anterior.
+    /// </summary>
+    public bool UseJumpPlanner { get; set; } = true;
+
+    /// <summary>
+    /// Paso de tiempo (s) de la simulación de trayectoria. Menor = más preciso y más costoso.
+    /// </summary>
+    public float JumpPlanStep { get; set; } = 0.05f;
+
+    /// <summary>
+    /// Escala del círculo de colisión usado en la simulación (1 = tamaño real; menor = más permisivo).
+    /// </summary>
+    public float JumpPlanRadiusScale { get; set; } = 0.9f;
+
+    /// <summary>
+    /// Cantidad de variantes de salto más altas que se prueban si el salto calculado no llega.
+    /// </summary>
+    public int JumpHeightVariants { get; set; } = 3;
+
+    /// <summary>
+    /// Incremento de altura entre variantes (hasta MaxJumpHeight).
+    /// </summary>
+    public float JumpHeightVariantStep { get; set; } = 1.5f;
+
+    /// <summary>
+    /// Error horizontal máximo aceptado entre el aterrizaje simulado y el destino.
+    /// </summary>
+    public float LandingToleranceX { get; set; } = 3f;
+
+    /// <summary>
+    /// Error vertical máximo aceptado entre el aterrizaje simulado y el destino.
+    /// </summary>
+    public float LandingToleranceY { get; set; } = 2f;
+
+    /// <summary>
+    /// Segundos entre intentos de planificar un ataque cuando no hay plan viable.
+    /// </summary>
+    public float JumpPlanRetryInterval { get; set; } = 0.25f;
+
+    /// <summary>
+    /// Si está activo, cuando el salto directo no es viable Cloth se posiciona con un salto corto y luego hace el largo.
+    /// El salto corto usa los parámetros de la pestaña "Ataque Corto".
+    /// </summary>
+    public bool HopPlanningEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Separación entre los puntos candidatos de posicionamiento.
+    /// </summary>
+    public float HopSearchStep { get; set; } = 2f;
+
+    /// <summary>
+    /// Distancia máxima a la que se busca un punto de posicionamiento.
+    /// </summary>
+    public float HopSearchMaxDistance { get; set; } = 8f;
+
+    /// <summary>
+    /// Desnivel máximo del punto de posicionamiento respecto a Cloth.
+    /// </summary>
+    public float HopMaxDeltaY { get; set; } = 2.5f;
+
+    /// <summary>
+    /// Distancia al enemigo a la que Cloth se aproxima o emerge (en vez de hacerlo justo debajo de él).
+    /// </summary>
+    public float ApproachStandoff { get; set; } = 10f;
+
+    #endregion
+
+    #region Escape Jump
+
+    /// <summary>
+    /// Si está activo, al recibir muchos golpes seguidos Cloth hace un gran salto para escapar.
+    /// </summary>
+    public bool EscapeEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Golpes recibidos dentro de la ventana de tiempo para activar el escape.
+    /// </summary>
+    public int EscapeHitCount { get; set; } = 3;
+
+    /// <summary>
+    /// Ventana de tiempo (s) en la que se cuentan los golpes.
+    /// </summary>
+    public float EscapeHitWindow { get; set; } = 4f;
+
+    /// <summary>
+    /// Altura del gran salto de escape.
+    /// </summary>
+    public float EscapeJumpHeight { get; set; } = 14f;
+
+    /// <summary>
+    /// Tiempo hasta el ápice del salto de escape.
+    /// </summary>
+    public float EscapeApexTime { get; set; } = 0.9f;
+
+    /// <summary>
+    /// Distancia horizontal objetivo del escape (se prueban también distancias menores).
+    /// </summary>
+    public float EscapeDistance { get; set; } = 20f;
+
+    /// <summary>
+    /// Velocidad horizontal máxima del salto de escape.
+    /// </summary>
+    public float EscapeSpeedX { get; set; } = 26f;
+
+    /// <summary>
+    /// Multiplicador de gravedad al descender en el escape.
+    /// </summary>
+    public float EscapeDiveMultiplier { get; set; } = 1.5f;
+
+    /// <summary>
+    /// Invulnerabilidad extra (s) durante el escape.
+    /// </summary>
+    public float EscapeInvulnerability { get; set; } = 1f;
+
+    /// <summary>
+    /// Tiempo mínimo (s) entre escapes.
+    /// </summary>
+    public float EscapeCooldown { get; set; } = 6f;
+
+    /// <summary>
+    /// Duración (s) de "Jump Attack Antic" antes de despegar en el escape.
+    /// </summary>
+    public float EscapeAnticDuration { get; set; } = 0.1f;
+
+    /// <summary>
+    /// El escape solo se activa si a Cloth le queda este porcentaje de vida o menos (100 = con cualquier vida).
+    /// Se ignora si la vida máxima es 0 (sin límite).
+    /// </summary>
+    public int EscapeHealthPercent { get; set; } = 50;
+
+    #endregion
+
+    #region Counter Jump
+
+    /// <summary>
+    /// Si está activo, tras recibir golpes seguidos de un enemigo Cloth salta alto hacia arriba y un poco atrás
+    /// y cae sobre el enemigo golpeándolo.
+    /// </summary>
+    public bool CounterEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Golpes recibidos dentro de la ventana de tiempo para activar el contraataque.
+    /// </summary>
+    public int CounterHitCount { get; set; } = 2;
+
+    /// <summary>
+    /// Ventana de tiempo (s) en la que se cuentan los golpes del contraataque.
+    /// </summary>
+    public float CounterHitWindow { get; set; } = 3f;
+
+    /// <summary>
+    /// El contraataque solo se activa si a Cloth le queda este porcentaje de vida o menos (100 = con cualquier vida).
+    /// </summary>
+    public int CounterHealthPercent { get; set; } = 100;
+
+    /// <summary>
+    /// Tiempo mínimo (s) entre contraataques.
+    /// </summary>
+    public float CounterCooldown { get; set; } = 5f;
+
+    /// <summary>
+    /// Distancia máxima al enemigo que la golpeó para poder contraatacarlo.
+    /// </summary>
+    public float CounterMaxDistance { get; set; } = 15f;
+
+    /// <summary>
+    /// Altura del salto del contraataque.
+    /// </summary>
+    public float CounterJumpHeight { get; set; } = 10f;
+
+    /// <summary>
+    /// Tiempo hasta el ápice del salto del contraataque.
+    /// </summary>
+    public float CounterApexTime { get; set; } = 0.75f;
+
+    /// <summary>
+    /// Velocidad horizontal hacia atrás durante la subida.
+    /// </summary>
+    public float CounterBackSpeedX { get; set; } = 6f;
+
+    /// <summary>
+    /// Velocidad horizontal máxima durante la caída hacia el enemigo.
+    /// </summary>
+    public float CounterMaxSpeedX { get; set; } = 28f;
+
+    /// <summary>
+    /// Multiplicador de gravedad en la caída del contraataque.
+    /// </summary>
+    public float CounterDiveMultiplier { get; set; } = 2f;
+
+    /// <summary>
+    /// Duración (s) de "Jump Attack Antic" antes de despegar en el contraataque.
+    /// </summary>
+    public float CounterAnticDuration { get; set; } = 0.1f;
+
+    /// <summary>
+    /// Daño del golpe del contraataque.
+    /// </summary>
+    public int CounterSlamDamageAmount { get; set; } = 50;
+
+    /// <summary>
+    /// Invulnerabilidad extra (s) durante el contraataque.
+    /// </summary>
+    public float CounterInvulnerability { get; set; } = 0.6f;
+
+    #endregion
+
+    #region Knight vs Cloth
+
+    /// <summary>
+    /// Si está activo, la hitbox de Cloth daña al Caballero cuando lo toca (también sin modo duelo).
+    /// </summary>
+    public bool ClothCanHurtKnight { get; set; } = true;
+
+    /// <summary>
+    /// Daño (máscaras) que Cloth le hace al Caballero por golpe.
+    /// </summary>
+    public int ClothDamageToKnight { get; set; } = 1;
+
+    /// <summary>
+    /// Si está activo, los golpes de clavo del Caballero dañan a Cloth.
+    /// </summary>
+    public bool KnightCanHurtCloth { get; set; } = true;
+
+    /// <summary>
+    /// Daño (en unidades de la vida máxima de Cloth) que le hace un golpe de clavo del Caballero.
+    /// </summary>
+    public int KnightHitDamage { get; set; } = 2;
+
     #endregion
 
     #region Test Options
 
     /// <summary>
-    /// Si está activo, Cloth considera al Caballero como objetivo de ataque (solo pruebas, no le hace daño).
+    /// Si está activo, Cloth considera al Caballero como objetivo de ataque (modo duelo). El daño real depende de ClothCanHurtKnight.
     /// Base para un futuro modo duelo.
     /// </summary>
     public bool AttackPlayer { get; set; } = false;
@@ -527,6 +891,20 @@ public sealed class ClothSettings {
     /// Tiempo límite en segundos en estado ocupado (busy) antes de forzar un rescate por atascamiento.
     /// </summary>
     public float BusyRescueTimeout { get; set; } = 8.0f;
+
+    #endregion
+
+    #region Audio & Voice
+
+    /// <summary>
+    /// Si está activo, Cloth reproduce sus sonidos originales del juego (gritos de ataque, saltos, daño, etc.).
+    /// </summary>
+    public bool ClothSoundsEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Volumen de reproducción de las voces y efectos de Cloth (de 0.0 a 1.0).
+    /// </summary>
+    public float ClothVoiceVolume { get; set; } = 0.85f;
 
     #endregion
 

@@ -27,6 +27,35 @@ internal static class ClothCompanionManager {
             ? CompanionInstance
             : null;
 
+    /// <summary>
+    /// Si el collider golpeado por el clavo del Caballero es parte de Cloth, le pasa el golpe y devuelve true.
+    /// </summary>
+    internal static bool TryHandleKnightSlash(Collider2D hitCollider) {
+        var companion = CompanionInstance;
+        if (companion == null || !hitCollider.transform.IsChildOf(companion.transform))
+            return false;
+
+        Behavior?.ReceiveKnightHit();
+        return true;
+    }
+
+    /// <summary>
+    /// Golpe que llega al HealthManager de Cloth por el pipeline normal del juego (HitTaker). Devuelve true si es de Cloth.
+    /// </summary>
+    internal static bool TryHandleHit(HealthManager target, HitInstance hit) {
+        var companion = CompanionInstance;
+        if (companion == null || !target.transform.IsChildOf(companion.transform))
+            return false;
+
+        // Golpes de la propia Cloth: se ignoran
+        if (hit.Source != null && hit.Source.transform.IsChildOf(companion.transform))
+            return true;
+
+        ClothTheWarriorCompanionMod.Instance?.LogDebug($"Cloth alcanzada por el pipeline de golpes (daño {hit.DamageDealt}, tipo {hit.AttackType}).");
+        Behavior?.ReceiveKnightHit();
+        return true;
+    }
+
     #region Position Utilities
 
     /// <summary>
@@ -125,6 +154,15 @@ internal static class ClothCompanionManager {
         ) ?? throw new NullReferenceException("Failed to instantiate Cloth companion");
 
         companion.name = CompanionGameObjectName;
+
+        // Los golpes del Caballero solo se registran en las capas Enemies / Attackable
+        int enemiesLayer = LayerMask.NameToLayer("Enemies");
+        int attackableLayer = LayerMask.NameToLayer("Attackable");
+        ClothTheWarriorCompanionMod.Instance?.LogDebug($"Capa de Cloth: {LayerMask.LayerToName(companion.layer)} ({companion.layer}).");
+        if (enemiesLayer >= 0 && companion.layer != enemiesLayer && companion.layer != attackableLayer) {
+            companion.layer = enemiesLayer;
+            ClothTheWarriorCompanionMod.Instance?.LogDebug("Capa de Cloth cambiada a Enemies.");
+        }
         UObject.DontDestroyOnLoad(companion);
 
         // Desactivar FSMs originales de IA enemiga/NPC antes de activar
@@ -143,6 +181,8 @@ internal static class ClothCompanionManager {
         }
 
         companion.AddComponent<ClothFollowBehavior>();
+        companion.AddComponent<ClothHitResponder>();
+        companion.AddComponent<ClothAudioController>();
 
         //DEBUGGER:
         companion.AddComponent<ClothTheWarriorCompanion.DebugTools.ClothVisualDebugger>();

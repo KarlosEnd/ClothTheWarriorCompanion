@@ -48,6 +48,10 @@
 			<HintPath>$(HKRefs)/UnityEngine.Physics2DModule.dll</HintPath>
 			<Private>false</Private>
 		</Reference>
+		<Reference Include="UnityEngine.AudioModule">
+			<HintPath>$(HKRefs)/UnityEngine.AudioModule.dll</HintPath>
+			<Private>false</Private>
+		</Reference>
 		<Reference Include="UnityEngine.IMGUIModule">
 			<HintPath>$(HKRefs)/UnityEngine.IMGUIModule.dll</HintPath>
 			<Private>false</Private>

@@ -147,10 +147,16 @@ internal sealed class ClothSpatialSensor {
             || Physics2D.Raycast(origin + (Vector2.right * halfWidth), Vector2.down, 0.4f, TerrainMask).collider != null;
     }
 
-    public float GetCeilingClearance() {
-        Vector2 top = BodyCenter() + (Vector2.up * (BodySize().y * 0.5f));
-        RaycastHit2D hit = Physics2D.Raycast(top, Vector2.up, 12f, TerrainMask);
-        return hit.collider != null ? hit.distance : 12f;
+    public float GetCeilingClearance() => GetCeilingClearanceAt(_transform.position);
+
+    /// <summary>
+    /// Espacio libre sobre la cabeza de Cloth si su transform estuviera en la posición indicada.
+    /// </summary>
+    public float GetCeilingClearanceAt(Vector2 position, float maxDistance = 12f) {
+        Vector2 center = position + Vector2.Scale(_normalCollider.offset, (Vector2)_transform.lossyScale);
+        Vector2 top = center + (Vector2.up * (BodySize().y * 0.5f));
+        RaycastHit2D hit = Physics2D.Raycast(top, Vector2.up, maxDistance, TerrainMask);
+        return hit.collider != null ? hit.distance : maxDistance;
     }
 
     public float GetMaxReach() => Mathf.Min(MaxVerticalReach, GetCeilingClearance() - 0.5f);

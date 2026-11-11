@@ -1,5 +1,5 @@
+using System;
 using ClothTheWarriorCompanion.DebugTools;
-
 using UnityEngine;
 
 namespace ClothTheWarriorCompanion.Config;
@@ -17,7 +17,7 @@ public sealed class ClothQuickMenu : MonoBehaviour {
     private Vector2 _scrollPosition = Vector2.zero;
     private static Texture2D? _cursorTexture;
 
-    private static readonly string[] TabTitles = { "Seguimiento", "Salto y Física", "Combate", "Hitbox Ataque", "Ataque Corto", "Anim. Ataque", "Retroceso", "Daño y Target", "Pruebas" };
+    private static readonly string[] TabTitles = { "Seguimiento", "Salto y Física", "Combate", "Hitbox Ataque", "Ataque Corto", "Anim. Ataque", "Retroceso", "Daño y Target", "Planificador", "Escape", "Contraataque", "Predicción", "Duelo" };
 
     public static bool IsOpen => _instance != null && _instance._isOpen;
 
@@ -73,7 +73,7 @@ public sealed class ClothQuickMenu : MonoBehaviour {
         var settings = ClothSettings.Current;
 
         GUILayout.Space(5);
-        _selectedTab = GUILayout.SelectionGrid(_selectedTab, TabTitles, 5, GUILayout.Height(56));
+        _selectedTab = GUILayout.SelectionGrid(_selectedTab, TabTitles, 5, GUILayout.Height(84));
         GUILayout.Space(10);
 
         _scrollPosition = GUILayout.BeginScrollView(_scrollPosition);
@@ -104,6 +104,18 @@ public sealed class ClothQuickMenu : MonoBehaviour {
                 DrawDamageTab(settings);
                 break;
             case 8:
+                DrawPlannerTab(settings);
+                break;
+            case 9:
+                DrawEscapeTab(settings);
+                break;
+            case 10:
+                DrawCounterTab(settings);
+                break;
+            case 11:
+                DrawPredictionTab(settings);
+                break;
+            case 12:
                 DrawTestTab(settings);
                 break;
         }
@@ -128,7 +140,7 @@ public sealed class ClothQuickMenu : MonoBehaviour {
         GUI.DragWindow(new Rect(0, 0, _windowRect.width, 25));
     }
 
-		private void DrawFollowTab(ClothSettings settings) {
+    private void DrawFollowTab(ClothSettings settings) {
         DrawFloatRow("Distancia Seguir X:", settings.FollowDistanceX, v => settings.FollowDistanceX = v, 1f, float.MinValue, float.MaxValue);
         DrawFloatRow("Distancia Seguir Y:", settings.FollowDistanceY, v => settings.FollowDistanceY = v, 0.5f, float.MinValue, float.MaxValue);
         DrawFloatRow("Umbral Salto X:", settings.BurrowThresholdX, v => settings.BurrowThresholdX = v, 2f, float.MinValue, float.MaxValue);
@@ -165,7 +177,7 @@ public sealed class ClothQuickMenu : MonoBehaviour {
         DrawFloatRow("Mult. Gravedad Picado:", settings.DiveGravityMultiplier, v => settings.DiveGravityMultiplier = v, 0.1f, float.MinValue, float.MaxValue);
         DrawFloatRow("Distancia Anim. Ataque:", settings.AttackAnimDistance, v => settings.AttackAnimDistance = v, 0.5f, float.MinValue, float.MaxValue);
         DrawFloatRow("Distancia Golpe Aéreo:", settings.AirHitDistance, v => settings.AirHitDistance = v, 0.5f, float.MinValue, float.MaxValue);
-        DrawIntRow("Daño Slam (Garrotazo):", settings.SlamDamageAmount, v => settings.SlamDamageAmount = v, 5, int.MinValue, int.MaxValue); // Actualizado también para consistencia
+        DrawIntRow("Daño Slam largo (Garrotazo):", settings.SlamDamageAmount, v => settings.SlamDamageAmount = v, 5, int.MinValue, int.MaxValue);
         DrawFloatRow("Cooldown de Ataque:", settings.AttackCooldown, v => settings.AttackCooldown = v, 0.1f, float.MinValue, float.MaxValue, "0.0s");
     }
 
@@ -201,6 +213,7 @@ public sealed class ClothQuickMenu : MonoBehaviour {
         DrawFloatRow("Espera chequeo suelo:", settings.CloseLandCheckDelay, v => settings.CloseLandCheckDelay = v, 0.02f, float.MinValue, float.MaxValue, "0.00s");
         DrawFloatRow("Escala Recover:", settings.CloseRecoverDurationScale, v => settings.CloseRecoverDurationScale = v, 0.1f, float.MinValue, float.MaxValue, "0.0x");
         DrawFloatRow("Cooldown tras ataque:", settings.CloseAttackCooldown, v => settings.CloseAttackCooldown = v, 0.1f, float.MinValue, float.MaxValue, "0.0s");
+        DrawIntRow("Daño Slam corto:", settings.CloseSlamDamageAmount, v => settings.CloseSlamDamageAmount = v, 5, 0, 1000);
     }
 
     private void DrawAttackAnimTab(ClothSettings settings) {
@@ -214,6 +227,10 @@ public sealed class ClothQuickMenu : MonoBehaviour {
         DrawFloatRow("Cooldown de Ataque:", settings.AttackCooldown, v => settings.AttackCooldown = v, 0.1f, float.MinValue, float.MaxValue, "0.0s");
 
         GUILayout.Space(8);
+        GUILayout.Label("Impacto Activo (Dañar mientras mantenga el golpe)");
+        DrawFloatRow("Duración Hitbox Activa:", settings.AttackActiveDuration, v => settings.AttackActiveDuration = v, 0.05f, 0f, 2f, "0.00s");
+
+        GUILayout.Space(8);
         GUILayout.Label("Caída tras el golpe (aplica a los dos ataques: normal y corto).");
         DrawFloatRow("Espera tras el golpe:", settings.PostAttackFallDelay, v => settings.PostAttackFallDelay = v, 0.02f, 0f, 2f, "0.00s");
         DrawIntRow("Frames de 'Jump':", settings.PostAttackJumpFrames, v => settings.PostAttackJumpFrames = v, 1, 0, 30);
@@ -222,6 +239,7 @@ public sealed class ClothQuickMenu : MonoBehaviour {
 
     private void DrawRetreatTab(ClothSettings settings) {
         GUILayout.Label("Salto hacia atrás sin golpe cuando un enemigo está pegado a Cloth (0 en distancia = desactivado).");
+        DrawBoolRow("Encadenar ataque de salto corto", settings.RetreatChainsAttack, v => settings.RetreatChainsAttack = v);
         DrawFloatRow("Distancia activación:", settings.RetreatTriggerDistance, v => settings.RetreatTriggerDistance = v, 0.25f, 0f, 30f, "0.00");
         DrawFloatRow("Desnivel Y máx.:", settings.RetreatMaxDeltaY, v => settings.RetreatMaxDeltaY = v, 0.5f, 0f, 30f);
         DrawFloatRow("Distancia de retroceso:", settings.RetreatDistance, v => settings.RetreatDistance = v, 0.5f, 0.5f, 30f);
@@ -243,9 +261,14 @@ public sealed class ClothQuickMenu : MonoBehaviour {
         DrawBoolRow("Cloth recibe daño", settings.CanTakeDamage, v => settings.CanTakeDamage = v);
         DrawIntRow("Vida máxima:", settings.MaxHealth, v => settings.MaxHealth = v, 1, 0, 100);
         DrawFloatRow("Invulnerabilidad tras golpe:", settings.HurtInvulnerability, v => settings.HurtInvulnerability = v, 0.1f, 0f, 10f, "0.0s");
-        DrawFloatRow("Duración aturdimiento:", settings.HurtStunDuration, v => settings.HurtStunDuration = v, 0.05f, 0.05f, 3f, "0.00s");
-        DrawFloatRow("Knockback X:", settings.KnockbackSpeedX, v => settings.KnockbackSpeedX = v, 1f, 0f, 60f);
+        DrawFloatRow("Duración aturdimiento:", settings.HurtStunDuration, v => settings.HurtStunDuration = v, 0.05f, 0.04f, 3f, "0.00s");
+        DrawFloatRow("Duración anim. daño:", settings.HurtAnimDuration, v => settings.HurtAnimDuration = v, 0.05f, 0.04f, 2f, "0.00s");
+        DrawFloatRow("Congelación al golpe:", settings.HitFreezeDuration, v => settings.HitFreezeDuration = v, 0.01f, 0f, 1f, "0.00s");
+        DrawFloatRow("Knockback X:", settings.KnockbackSpeedX, v => settings.KnockbackSpeedX = v, 2f, 0f, 150f);
         DrawFloatRow("Knockback Y:", settings.KnockbackSpeedY, v => settings.KnockbackSpeedY = v, 1f, 0f, 60f);
+        DrawFloatRow("Gravedad de knockback:", settings.KnockbackGravityScale, v => settings.KnockbackGravityScale = v, 0.2f, 0.5f, 10f, "0.0x");
+        DrawFloatRow("Desaceleración horizontal:", settings.KnockbackDeceleration, v => settings.KnockbackDeceleration = v, 5f, 5f, 200f);
+        DrawBoolRow("Recuperar al tocar suelo", settings.KnockbackRecoverOnLand, v => settings.KnockbackRecoverOnLand = v);
         DrawFloatRow("FPS anim. daño (0 = off):", settings.HurtAnimFps, v => settings.HurtAnimFps = v, 1f, 0f, 60f);
         DrawFloatRow("Retorno tras caer:", settings.DefeatedReturnDelay, v => settings.DefeatedReturnDelay = v, 0.5f, 0f, 60f, "0.0s");
 
@@ -253,12 +276,111 @@ public sealed class ClothQuickMenu : MonoBehaviour {
         GUILayout.Label("Target de enemigos (solo afecta a los que guardan al Caballero en una variable de su FSM).");
         DrawBoolRow("Los enemigos le hacen target", settings.EnemiesTargetCloth, v => settings.EnemiesTargetCloth = v);
         DrawFloatRow("Rango de target:", settings.EnemyTargetRange, v => settings.EnemyTargetRange = v, 2f, 0f, 200f);
+        DrawFloatRow("Frecuencia de reasignación:", settings.EnemyRetargetInterval, v => settings.EnemyRetargetInterval = v, 0.05f, 0.05f, 2f, "0.00s");
+    }
+
+    private void DrawPlannerTab(ClothSettings settings) {
+        GUILayout.Label("Simula cada salto contra el terreno antes de hacerlo (evita saltos que chocan o no llegan).");
+        DrawBoolRow("Usar planificador de saltos", settings.UseJumpPlanner, v => settings.UseJumpPlanner = v);
+        DrawFloatRow("Paso de simulación:", settings.JumpPlanStep, v => settings.JumpPlanStep = v, 0.01f, 0.02f, 0.2f, "0.00s");
+        DrawFloatRow("Escala del círculo:", settings.JumpPlanRadiusScale, v => settings.JumpPlanRadiusScale = v, 0.05f, 0.3f, 1.2f, "0.00x");
+        DrawIntRow("Variantes de altura:", settings.JumpHeightVariants, v => settings.JumpHeightVariants = v, 1, 0, 8);
+        DrawFloatRow("Incremento por variante:", settings.JumpHeightVariantStep, v => settings.JumpHeightVariantStep = v, 0.25f, 0.1f, 6f, "0.00");
+        DrawFloatRow("Tolerancia aterrizaje X:", settings.LandingToleranceX, v => settings.LandingToleranceX = v, 0.25f, 0.25f, 15f, "0.00");
+        DrawFloatRow("Tolerancia aterrizaje Y:", settings.LandingToleranceY, v => settings.LandingToleranceY = v, 0.25f, 0.25f, 15f, "0.00");
+        DrawFloatRow("Reintento de plan ataque:", settings.JumpPlanRetryInterval, v => settings.JumpPlanRetryInterval = v, 0.05f, 0.05f, 5f, "0.00s");
+
+        GUILayout.Space(8);
+        GUILayout.Label("Salto corto de posicionamiento (usa los parámetros de 'Ataque Corto').");
+        DrawBoolRow("Posicionarse antes del salto largo", settings.HopPlanningEnabled, v => settings.HopPlanningEnabled = v);
+        DrawFloatRow("Separación de candidatos:", settings.HopSearchStep, v => settings.HopSearchStep = v, 0.5f, 0.5f, 10f);
+        DrawFloatRow("Distancia máx. de búsqueda:", settings.HopSearchMaxDistance, v => settings.HopSearchMaxDistance = v, 1f, 1f, 30f);
+        DrawFloatRow("Desnivel máx. del punto:", settings.HopMaxDeltaY, v => settings.HopMaxDeltaY = v, 0.5f, 0f, 15f);
+
+        GUILayout.Space(8);
+        GUILayout.Label("Aproximación a enemigos (también donde emerge al excavar).");
+        DrawFloatRow("Distancia al enemigo:", settings.ApproachStandoff, v => settings.ApproachStandoff = v, 1f, 2f, 40f);
+    }
+
+    private void DrawEscapeTab(ClothSettings settings) {
+        GUILayout.Label("Gran salto para escapar cuando recibe muchos golpes seguidos.");
+        DrawBoolRow("Escape activado", settings.EscapeEnabled, v => settings.EscapeEnabled = v);
+        DrawIntRow("Golpes para activar:", settings.EscapeHitCount, v => settings.EscapeHitCount = v, 1, 1, 20);
+        DrawIntRow("Vida restante máx. (%):", settings.EscapeHealthPercent, v => settings.EscapeHealthPercent = v, 5, 0, 100);
+        DrawFloatRow("Ventana de tiempo:", settings.EscapeHitWindow, v => settings.EscapeHitWindow = v, 0.5f, 0.5f, 30f, "0.0s");
+        DrawFloatRow("Cooldown de escape:", settings.EscapeCooldown, v => settings.EscapeCooldown = v, 0.5f, 0f, 60f, "0.0s");
+        DrawFloatRow("Invulnerabilidad extra:", settings.EscapeInvulnerability, v => settings.EscapeInvulnerability = v, 0.1f, 0f, 10f, "0.0s");
+
+        GUILayout.Space(8);
+        GUILayout.Label("Salto de escape (animación 'Jump' y Recover con la escala de Salto y Física)");
+        DrawFloatRow("Altura:", settings.EscapeJumpHeight, v => settings.EscapeJumpHeight = v, 0.5f, 1f, 30f);
+        DrawFloatRow("Tiempo al ápice:", settings.EscapeApexTime, v => settings.EscapeApexTime = v, 0.05f, 0.1f, 3f, "0.00s");
+        DrawFloatRow("Distancia:", settings.EscapeDistance, v => settings.EscapeDistance = v, 1f, 2f, 60f);
+        DrawFloatRow("Velocidad X máx.:", settings.EscapeSpeedX, v => settings.EscapeSpeedX = v, 1f, 1f, 80f);
+        DrawFloatRow("Mult. Gravedad Picado:", settings.EscapeDiveMultiplier, v => settings.EscapeDiveMultiplier = v, 0.1f, 1f, 10f, "0.0x");
+        DrawFloatRow("Duración Antic:", settings.EscapeAnticDuration, v => settings.EscapeAnticDuration = v, 0.02f, 0f, 2f, "0.00s");
+    }
+
+    private void DrawCounterTab(ClothSettings settings) {
+        GUILayout.Label("Tras golpes seguidos de un enemigo: salto alto hacia arriba y un poco atrás, y cae justo sobre él golpeándolo.");
+        DrawBoolRow("Contraataque activado", settings.CounterEnabled, v => settings.CounterEnabled = v);
+        DrawIntRow("Golpes para activar:", settings.CounterHitCount, v => settings.CounterHitCount = v, 1, 1, 20);
+        DrawFloatRow("Ventana de tiempo:", settings.CounterHitWindow, v => settings.CounterHitWindow = v, 0.5f, 0.5f, 30f, "0.0s");
+        DrawIntRow("Vida restante máx. (%):", settings.CounterHealthPercent, v => settings.CounterHealthPercent = v, 5, 0, 100);
+        DrawFloatRow("Cooldown:", settings.CounterCooldown, v => settings.CounterCooldown = v, 0.5f, 0f, 60f, "0.0s");
+        DrawFloatRow("Distancia máx. al enemigo:", settings.CounterMaxDistance, v => settings.CounterMaxDistance = v, 1f, 2f, 60f);
+        DrawFloatRow("Invulnerabilidad extra:", settings.CounterInvulnerability, v => settings.CounterInvulnerability = v, 0.1f, 0f, 10f, "0.0s");
+
+        GUILayout.Space(8);
+        GUILayout.Label("Salto");
+        DrawFloatRow("Altura:", settings.CounterJumpHeight, v => settings.CounterJumpHeight = v, 0.5f, 1f, 30f);
+        DrawFloatRow("Tiempo al ápice:", settings.CounterApexTime, v => settings.CounterApexTime = v, 0.05f, 0.1f, 3f, "0.00s");
+        DrawFloatRow("Velocidad hacia atrás X:", settings.CounterBackSpeedX, v => settings.CounterBackSpeedX = v, 1f, 0f, 40f);
+        DrawFloatRow("Velocidad caída X máx.:", settings.CounterMaxSpeedX, v => settings.CounterMaxSpeedX = v, 1f, 1f, 80f);
+        DrawFloatRow("Mult. Gravedad Picado:", settings.CounterDiveMultiplier, v => settings.CounterDiveMultiplier = v, 0.1f, 1f, 10f, "0.0x");
+        DrawFloatRow("Duración Antic:", settings.CounterAnticDuration, v => settings.CounterAnticDuration = v, 0.02f, 0f, 2f, "0.00s");
+        DrawIntRow("Daño del golpe:", settings.CounterSlamDamageAmount, v => settings.CounterSlamDamageAmount = v, 5, 0, 1000);
+    }
+
+    private void DrawPredictionTab(ClothSettings settings) {
+        GUILayout.Label("Predicción Balística Ofensiva:");
+        DrawBoolRow("Activar Predicción Ofensiva", settings.PredictTargetMovement, v => settings.PredictTargetMovement = v);
+        DrawFloatRow("Tiempo Máx (s) a predecir:", settings.PredictionMaxTime, v => settings.PredictionMaxTime = v, 0.1f, 0f, 5f, "0.0s");
+        DrawFloatRow("Distancia Máx de ajuste:", settings.PredictionMaxDistance, v => settings.PredictionMaxDistance = v, 1f, 0f, 50f);
+        DrawFloatRow("Margen de seguridad hitbox:", settings.HitboxClearanceMargin, v => settings.HitboxClearanceMargin = v, 0.05f, 0.05f, 3f, "0.00");
+        
+        GUILayout.Space(8);
+        GUILayout.Label("Anticipación Defensiva (TTC / CPA):");
+        DrawBoolRow("Predecir ataques y colisiones", settings.DefensivePredictionEnabled, v => settings.DefensivePredictionEnabled = v);
+        DrawFloatRow("Ventana anticipación (s):", settings.ThreatLookaheadTime, v => settings.ThreatLookaheadTime = v, 0.1f, 0.2f, 3f, "0.0s");
+        DrawFloatRow("Margen cono de peligro:", settings.ThreatMargin, v => settings.ThreatMargin = v, 0.1f, 0.1f, 3f, "0.0");
+        DrawBoolRow("Esquiva con salto corto + contra", settings.ThreatDodgeHopEnabled, v => settings.ThreatDodgeHopEnabled = v);
+        DrawBoolRow("Esquiva con salto largo", settings.ThreatDodgeJumpEnabled, v => settings.ThreatDodgeJumpEnabled = v);
+
+        GUILayout.Space(8);
+        GUILayout.Label("Priorización de Múltiples Objetivos (Pesos):");
+        DrawFloatRow("Peso Distancia:", settings.TargetPriorityDistanceWeight, v => settings.TargetPriorityDistanceWeight = v, 0.05f, 0f, 1f, "0.00");
+        DrawFloatRow("Peso Velocidad:", settings.TargetPrioritySpeedWeight, v => settings.TargetPrioritySpeedWeight = v, 0.05f, 0f, 1f, "0.00");
+        DrawFloatRow("Peso Embestida a Cloth:", settings.TargetPriorityApproachWeight, v => settings.TargetPriorityApproachWeight = v, 0.05f, 0f, 1f, "0.00");
+        DrawFloatRow("Peso Protección Caballero:", settings.TargetPriorityKnightProtectionWeight, v => settings.TargetPriorityKnightProtectionWeight = v, 0.05f, 0f, 1f, "0.00");
     }
 
     private void DrawTestTab(ClothSettings settings) {
-        GUILayout.Label("Opciones de prueba (base para un futuro modo duelo).");
-        DrawBoolRow("Cloth ataca al Caballero (sin daño)", settings.AttackPlayer, v => settings.AttackPlayer = v);
-        GUILayout.Label("Con esto activo, Cloth ignora a los enemigos y ataca al Caballero dentro de su radio de detección. La hitbox se registra pero no hace daño.");
+        GUILayout.Label("Daño entre Cloth y el Caballero. Cada dirección se activa o desactiva por separado.");
+        DrawBoolRow("Cloth puede golpear al Caballero", settings.ClothCanHurtKnight, v => settings.ClothCanHurtKnight = v);
+        DrawIntRow("Daño de Cloth al Caballero:", settings.ClothDamageToKnight, v => settings.ClothDamageToKnight = v, 1, 0, 10);
+        DrawBoolRow("El Caballero puede golpear a Cloth", settings.KnightCanHurtCloth, v => settings.KnightCanHurtCloth = v);
+        DrawIntRow("Daño del Caballero a Cloth:", settings.KnightHitDamage, v => settings.KnightHitDamage = v, 1, 0, 50);
+
+        GUILayout.Space(8);
+        GUILayout.Label("Modo duelo (pruebas): base para pelear contra el Caballero.");
+        DrawBoolRow("Cloth ataca al Caballero (lo toma como objetivo)", settings.AttackPlayer, v => settings.AttackPlayer = v);
+        GUILayout.Label("Con esto activo, Cloth ignora a los enemigos y ataca al Caballero dentro de su radio de detección. Si 'Cloth puede golpear al Caballero' está desactivado, la hitbox se registra pero no hace daño.");
+
+        GUILayout.Space(10);
+        GUILayout.Label("Efectos de Sonido y Voz de Cloth (clips originales del juego):");
+        DrawBoolRow("Efectos de voz activados", settings.ClothSoundsEnabled, v => settings.ClothSoundsEnabled = v);
+        DrawFloatRow("Volumen de voz:", settings.ClothVoiceVolume, v => settings.ClothVoiceVolume = v, 0.05f, 0f, 1f, "0.00");
 
         GUILayout.Space(10);
         string label = ClothVisualDebugger.IsActive ? "Ocultar hitboxes (F1)" : "Mostrar hitboxes (F1)";
@@ -368,6 +490,21 @@ public sealed class ClothQuickMenu : MonoBehaviour {
         settings.CloseLandCheckDelay = def.CloseLandCheckDelay;
         settings.CloseRecoverDurationScale = def.CloseRecoverDurationScale;
         settings.CloseAttackCooldown = def.CloseAttackCooldown;
+        
+        settings.AttackActiveDuration = def.AttackActiveDuration;
+        settings.PredictTargetMovement = def.PredictTargetMovement;
+        settings.PredictionMaxTime = def.PredictionMaxTime;
+        settings.PredictionMaxDistance = def.PredictionMaxDistance;
+        settings.HitboxClearanceMargin = def.HitboxClearanceMargin;
+        settings.DefensivePredictionEnabled = def.DefensivePredictionEnabled;
+        settings.ThreatLookaheadTime = def.ThreatLookaheadTime;
+        settings.ThreatMargin = def.ThreatMargin;
+        settings.ThreatDodgeHopEnabled = def.ThreatDodgeHopEnabled;
+        settings.ThreatDodgeJumpEnabled = def.ThreatDodgeJumpEnabled;
+        settings.TargetPriorityDistanceWeight = def.TargetPriorityDistanceWeight;
+        settings.TargetPrioritySpeedWeight = def.TargetPrioritySpeedWeight;
+        settings.TargetPriorityApproachWeight = def.TargetPriorityApproachWeight;
+        settings.TargetPriorityKnightProtectionWeight = def.TargetPriorityKnightProtectionWeight;
 
         settings.AttackAnticDuration = def.AttackAnticDuration;
         settings.AttackAnimLeadTime = def.AttackAnimLeadTime;
@@ -397,12 +534,73 @@ public sealed class ClothQuickMenu : MonoBehaviour {
         settings.MaxHealth = def.MaxHealth;
         settings.HurtInvulnerability = def.HurtInvulnerability;
         settings.HurtStunDuration = def.HurtStunDuration;
+        settings.HurtAnimDuration = def.HurtAnimDuration;
         settings.KnockbackSpeedX = def.KnockbackSpeedX;
         settings.KnockbackSpeedY = def.KnockbackSpeedY;
+        settings.KnockbackGravityScale = def.KnockbackGravityScale;
+        settings.KnockbackDeceleration = def.KnockbackDeceleration;
+        settings.KnockbackRecoverOnLand = def.KnockbackRecoverOnLand;
         settings.HurtAnimFps = def.HurtAnimFps;
+        settings.KnockbackDirectional = def.KnockbackDirectional;
+        settings.DodgeClearanceMargin = def.DodgeClearanceMargin;
+        settings.DodgeMinDistance = def.DodgeMinDistance;
+        settings.ClothSoundsEnabled = def.ClothSoundsEnabled;
+        settings.ClothVoiceVolume = def.ClothVoiceVolume;
         settings.DefeatedReturnDelay = def.DefeatedReturnDelay;
         settings.EnemiesTargetCloth = def.EnemiesTargetCloth;
         settings.EnemyTargetRange = def.EnemyTargetRange;
+
+        settings.UseJumpPlanner = def.UseJumpPlanner;
+        settings.JumpPlanStep = def.JumpPlanStep;
+        settings.JumpPlanRadiusScale = def.JumpPlanRadiusScale;
+        settings.JumpHeightVariants = def.JumpHeightVariants;
+        settings.JumpHeightVariantStep = def.JumpHeightVariantStep;
+        settings.LandingToleranceX = def.LandingToleranceX;
+        settings.LandingToleranceY = def.LandingToleranceY;
+        settings.JumpPlanRetryInterval = def.JumpPlanRetryInterval;
+        settings.HopPlanningEnabled = def.HopPlanningEnabled;
+        settings.HopSearchStep = def.HopSearchStep;
+        settings.HopSearchMaxDistance = def.HopSearchMaxDistance;
+        settings.HopMaxDeltaY = def.HopMaxDeltaY;
+        settings.ApproachStandoff = def.ApproachStandoff;
+
+        settings.EscapeEnabled = def.EscapeEnabled;
+        settings.EscapeHitCount = def.EscapeHitCount;
+        settings.EscapeHitWindow = def.EscapeHitWindow;
+        settings.EscapeJumpHeight = def.EscapeJumpHeight;
+        settings.EscapeApexTime = def.EscapeApexTime;
+        settings.EscapeDistance = def.EscapeDistance;
+        settings.EscapeSpeedX = def.EscapeSpeedX;
+        settings.EscapeDiveMultiplier = def.EscapeDiveMultiplier;
+        settings.EscapeInvulnerability = def.EscapeInvulnerability;
+        settings.EscapeCooldown = def.EscapeCooldown;
+        settings.EscapeAnticDuration = def.EscapeAnticDuration;
+
+        settings.EnemyRetargetInterval = def.EnemyRetargetInterval;
+        settings.ClothCanHurtKnight = def.ClothCanHurtKnight;
+        settings.ClothDamageToKnight = def.ClothDamageToKnight;
+        settings.KnightCanHurtCloth = def.KnightCanHurtCloth;
+        settings.KnightHitDamage = def.KnightHitDamage;
+
+        settings.HitFreezeDuration = def.HitFreezeDuration;
+        settings.CloseSlamDamageAmount = def.CloseSlamDamageAmount;
+        settings.RetreatChainsAttack = def.RetreatChainsAttack;
+        settings.EscapeHealthPercent = def.EscapeHealthPercent;
+
+        settings.CounterEnabled = def.CounterEnabled;
+        settings.CounterHitCount = def.CounterHitCount;
+        settings.CounterHitWindow = def.CounterHitWindow;
+        settings.CounterHealthPercent = def.CounterHealthPercent;
+        settings.CounterCooldown = def.CounterCooldown;
+        settings.CounterMaxDistance = def.CounterMaxDistance;
+        settings.CounterJumpHeight = def.CounterJumpHeight;
+        settings.CounterApexTime = def.CounterApexTime;
+        settings.CounterBackSpeedX = def.CounterBackSpeedX;
+        settings.CounterMaxSpeedX = def.CounterMaxSpeedX;
+        settings.CounterDiveMultiplier = def.CounterDiveMultiplier;
+        settings.CounterAnticDuration = def.CounterAnticDuration;
+        settings.CounterSlamDamageAmount = def.CounterSlamDamageAmount;
+        settings.CounterInvulnerability = def.CounterInvulnerability;
 
         settings.AttackPlayer = def.AttackPlayer;
     }

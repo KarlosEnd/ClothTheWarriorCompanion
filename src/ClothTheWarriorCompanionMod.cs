@@ -40,6 +40,7 @@ public sealed class ClothTheWarriorCompanionMod : Mod, ITogglableMod {
 		ModHooks.HeroUpdateHook += CompanionInputListener.OnHeroUpdate;
 		ModHooks.SlashHitHook += EnemyMarker.OnSlashHit;
 		On.PlayMakerFSM.OnEnable += ClothFsmModifier.OnFsmEnableHook;
+		On.HealthManager.Hit += EnemyMarker.OnHealthManagerHit;
 
 		USceneManager.activeSceneChanged += OnActiveSceneChanged;
 	}
@@ -48,6 +49,7 @@ public sealed class ClothTheWarriorCompanionMod : Mod, ITogglableMod {
 		ModHooks.HeroUpdateHook -= CompanionInputListener.OnHeroUpdate;
 		ModHooks.SlashHitHook -= EnemyMarker.OnSlashHit;
 		On.PlayMakerFSM.OnEnable -= ClothFsmModifier.OnFsmEnableHook;
+		On.HealthManager.Hit -= EnemyMarker.OnHealthManagerHit;
 		EnemyTargetRedirector.RestoreAll();
 		USceneManager.activeSceneChanged -= OnActiveSceneChanged;
 
